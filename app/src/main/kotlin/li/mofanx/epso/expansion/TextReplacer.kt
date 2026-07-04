@@ -170,14 +170,16 @@ class TextReplacer(private val a11yService: A11yService) {
 
     /**
      * 撤销上次替换（通过 ACTION_SET_TEXT 还原替换前的完整文本）
-     * lastReplacement = Pair(替换前全文, 节点引用)
+     *
+     * @param node 当前焦点节点（优先使用，比保存的引用更新鲜）；传 null 时回退到保存的节点引用
      */
     private var lastReplacement: Pair<String, AccessibilityNodeInfo>? = null
 
-    suspend fun undo(node: AccessibilityNodeInfo): Boolean {
+    suspend fun undo(node: AccessibilityNodeInfo? = null): Boolean {
         val (original, savedNode) = lastReplacement ?: return false
+        val target = node ?: savedNode
         return try {
-            performTextReplacement(savedNode, original, original.length)
+            performTextReplacement(target, original, original.length)
         } finally {
             lastReplacement = null
         }

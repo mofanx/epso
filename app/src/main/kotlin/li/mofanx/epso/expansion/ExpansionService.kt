@@ -133,7 +133,10 @@ class ExpansionService : A11yService() {
             val now = System.currentTimeMillis()
             lastTextChanges[packageName] = TextChangeInfo(currentText, now)
             delay(debounceMs)
+            // 如果在 debounce 期间文本已变化，放弃本次处理
             if (lastTextChanges[packageName]?.text != currentText) return@launch
+            // 处理完毕后清除条目，避免 map 无限增长
+            lastTextChanges.remove(packageName)
             performExpansion(node, currentText, packageName)
         }
     }
@@ -237,9 +240,9 @@ class ExpansionService : A11yService() {
 private data class TextChangeInfo(val text: String, val timestamp: Long)
 
 sealed class ExpansionState {
-    object Idle : ExpansionState()
-    object Matching : ExpansionState()
-    object Expanding : ExpansionState()
+    data object Idle : ExpansionState()
+    data object Matching : ExpansionState()
+    data object Expanding : ExpansionState()
     data class Completed(val trigger: String, val expandedText: String) : ExpansionState()
     data class Failed(val error: String) : ExpansionState()
 }
