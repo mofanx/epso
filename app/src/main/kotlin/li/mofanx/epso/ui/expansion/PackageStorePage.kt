@@ -38,7 +38,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import li.mofanx.epso.expansion.MatchStore
 import li.mofanx.epso.expansion.hub.HubClient
@@ -157,12 +159,20 @@ fun PackageStorePage() {
                                 r
                             }
                             installed = HubClient.installedPackages(workspaceDir)
-                            actionMsg = when (result) {
-                                is HubResult.Success ->
-                                    if (isInstalled) "✓ 已卸载 ${pkg.name}" else "✓ 已安装 ${pkg.name}"
-                                is HubResult.Failure -> "✗ ${result.error}"
+                            when (result) {
+                                is HubResult.Success -> {
+                                    // 成功后短暂显示提示，再自动关闭对话框
+                                    actionMsg = if (isInstalled) "✓ 已卸载 ${pkg.name}" else "✓ 已安装 ${pkg.name}"
+                                    isActing = false
+                                    delay(800)
+                                    actionPkg = null
+                                    actionMsg = ""
+                                }
+                                is HubResult.Failure -> {
+                                    actionMsg = "✗ ${result.error}"
+                                    isActing = false
+                                }
                             }
-                            isActing = false
                         }
                     },
                     enabled = !isActing,

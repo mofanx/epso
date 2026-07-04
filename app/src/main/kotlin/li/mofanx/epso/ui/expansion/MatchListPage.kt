@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import li.mofanx.epso.expansion.Match
 import li.mofanx.epso.expansion.MatchGroup
@@ -77,7 +78,8 @@ fun MatchListPage() {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     val groups by MatchStore.groups.collectAsState()
-    val totalCount = MatchStore.matchCount
+    val matchDict by MatchStore.matchDict.collectAsState()
+    val totalCount = remember(matchDict) { matchDict.values.distinct().size }
 
     // 搜索过滤
     var query by remember { mutableStateOf("") }
@@ -119,9 +121,12 @@ fun MatchListPage() {
             FloatingActionButton(
                 onClick = throttle {
                     scope.launch(Dispatchers.IO) {
+                        // 确保文件存在后再跳转，避免编辑页打开时文件尚未创建
                         if (!firstFile.exists()) MatchStore.createFile("base")
+                        withContext(Dispatchers.Main) {
+                            mainVm.navigatePage(MatchEditorRoute(firstFile.absolutePath))
+                        }
                     }
-                    mainVm.navigatePage(MatchEditorRoute(firstFile.absolutePath))
                 },
             ) {
                 PerfIcon(imageVector = PerfIcon.Add)
@@ -175,7 +180,10 @@ fun MatchListPage() {
                     }
                     items(
                         items = group.matches,
-                        key = { m -> "${group.sourceFile}::${m.trigger}::${m.regex}" },
+                        key = { m ->
+                            // trigger + regex 可能同时为空（如纯 replace 规则），追加 replace 前20字符兜底
+                            "${group.sourceFile}::${m.trigger}::${m.regex}::${m.replace.take(20)}"
+                        },
                     ) { match ->
                         MatchCard(
                             match = match,
