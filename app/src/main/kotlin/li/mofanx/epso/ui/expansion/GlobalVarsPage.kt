@@ -184,7 +184,7 @@ fun GlobalVarsPage() {
             ) {
                 itemsIndexed(
                     items = globalVars,
-                    key = { idx, v -> "${idx}_${v.name}" },
+                    key = { _, v -> v.name },
                 ) { index, v ->
                     VarCard(
                         v = v,
@@ -252,8 +252,12 @@ private fun VarCard(
                             "echo" -> append("  值：${params.echo}")
                             "date" -> append("  格式：${params.format}")
                             "random" -> {
-                                val range = "${params.min ?: 0}–${params.max ?: 100}"
-                                append("  范围：$range")
+                                val choices = params.choices.ifEmpty { params.values }
+                                if (choices.isNotEmpty()) {
+                                    append("  选项：${choices.take(3).joinToString(", ")}")
+                                } else {
+                                    append("  范围：${params.min ?: 0}–${params.max ?: 100}")
+                                }
                             }
                             "choice" -> append("  选项：${params.values.take(3).joinToString(", ")}")
                             else -> {}

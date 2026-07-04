@@ -5,6 +5,7 @@ import org.junit.Test
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -103,11 +104,26 @@ class VarEvaluatorTest {
     }
 
     @Test
-    fun `random with empty choices returns placeholder`() = runTest {
+    fun `random with empty choices falls back to min-max range`() = runTest {
         val ev = evaluator()
+        // No choices → uses min/max (default 0–100)
         val v = Var(name = "r", type = "random", params = VarParams())
         val result = ev.evaluate("{{r}}", localVars = listOf(v))
-        assertEquals("{{r}}", result)
+        val num = result.toIntOrNull()
+        assertNotNull(num, "Expected a number from min/max fallback, got: $result")
+        assertTrue(num in 0..100)
+    }
+
+    @Test
+    fun `random with explicit min-max returns number in range`() = runTest {
+        val ev = evaluator()
+        val v = Var(name = "r", type = "random", params = VarParams(min = 5, max = 10))
+        repeat(30) {
+            val result = ev.evaluate("{{r}}", localVars = listOf(v))
+            val num = result.toIntOrNull()
+            assertNotNull(num)
+            assertTrue(num!! in 5..10)
+        }
     }
 
     @Test

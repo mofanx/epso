@@ -80,7 +80,14 @@ class VarEvaluator(
 
                 "random" -> {
                     val choices = v.params.choices.ifEmpty { v.params.values }
-                    choices.randomOrNull()
+                    if (choices.isNotEmpty()) {
+                        choices.random()
+                    } else {
+                        // min/max 数值范围模式（espanso 原始功能）
+                        val min = v.params.min ?: 0
+                        val max = v.params.max ?: 100
+                        Random.nextInt(min, max + 1).toString()
+                    }
                 }
 
                 "choice" -> {
