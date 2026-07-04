@@ -138,6 +138,11 @@ object HubClient {
                 } ?: emptyList()
         }
 
+    // ── 生命周期 ──────────────────────────────────────────────────
+
+    /** 释放底层连接池（在 App 退出时调用） */
+    fun close() = client.close()
+
     // ── 私有 ───────────────────────────────────────────────────
 
     private suspend fun verifySha256(pkg: HubPackage, zipBytes: ByteArray) {

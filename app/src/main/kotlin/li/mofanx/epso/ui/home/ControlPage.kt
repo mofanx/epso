@@ -41,7 +41,6 @@ import li.mofanx.epso.MainActivity
 import li.mofanx.epso.R
 import li.mofanx.epso.expansion.ExpansionService
 import li.mofanx.epso.expansion.ExpansionTestPage
-import li.mofanx.epso.expansion.MatchStore
 import li.mofanx.epso.ui.expansion.FilesRoute
 import li.mofanx.epso.ui.expansion.GlobalVarsRoute
 import li.mofanx.epso.ui.expansion.MatchListRoute
@@ -70,8 +69,7 @@ import li.mofanx.epso.util.throttle
 fun useExpansionPage(): ScaffoldExt {
     val mainVm = LocalMainViewModel.current
     val scrollKey = rememberSaveable { mutableIntStateOf(0) }
-    val (scrollBehavior, scrollState) = useScrollBehaviorState(scrollKey)
-    val matchCount = MatchStore.matchCount
+    val (scrollBehavior, _) = useScrollBehaviorState(scrollKey)
 
     LaunchedEffect(null) {
         mainVm.resetPageScrollEvent.collect {

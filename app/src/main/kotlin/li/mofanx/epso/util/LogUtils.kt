@@ -22,7 +22,7 @@ object LogUtils {
         val name = Thread.currentThread().name
         val actualLoc = loc.substring("li.mofanx.epso.".length)
         val texts = args.map { stringify(it) }
-        if (META.debuggable) {
+        if (runCatching { META.debuggable }.getOrDefault(false)) {
             val msg = buildString {
                 append("$name, $actualLoc")
                 texts.forEachIndexed { i, text ->
@@ -34,14 +34,16 @@ object LogUtils {
                     append(text)
                 }
             }
-            Log.d(tag, msg)
+            runCatching { Log.d(tag, msg) }
         }
         val t = System.currentTimeMillis()
-        logFileExecutor.run {
-            logToFile(tag, name, actualLoc, texts, t)
+        runCatching {
+            logFileExecutor.run {
+                logToFile(tag, name, actualLoc, texts, t)
+            }
         }
     }
-    
+
     fun e(
         vararg args: Any?,
         @Loc loc: String = "",
@@ -51,7 +53,7 @@ object LogUtils {
         val name = Thread.currentThread().name
         val actualLoc = loc.substring("li.mofanx.epso.".length)
         val texts = args.map { stringify(it) }
-        if (META.debuggable) {
+        if (runCatching { META.debuggable }.getOrDefault(false)) {
             val msg = buildString {
                 append("$name, $actualLoc")
                 texts.forEachIndexed { i, text ->
@@ -63,11 +65,13 @@ object LogUtils {
                     append(text)
                 }
             }
-            Log.e(tag, msg)
+            runCatching { Log.e(tag, msg) }
         }
         val t = System.currentTimeMillis()
-        logFileExecutor.run {
-            logToFile(tag, name, actualLoc, texts, t)
+        runCatching {
+            logFileExecutor.run {
+                logToFile(tag, name, actualLoc, texts, t)
+            }
         }
     }
 }
@@ -153,7 +157,7 @@ private fun stringify(arg: Any?): String = when (arg) {
         sb.toString()
     }
 
-    is Throwable -> Log.getStackTraceString(arg)
+    is Throwable -> runCatching { Log.getStackTraceString(arg) }.getOrElse { arg.stackTraceToString() }
 
     else -> arg.toString()
 }

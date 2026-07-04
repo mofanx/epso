@@ -15,6 +15,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,11 +43,42 @@ fun ExpansionTestPage() {
     val expansionState by (ExpansionService.getInstance()?.expansionState
         ?.collectAsState()
         ?: remember { mutableStateOf(ExpansionState.Idle) })
-    val matchCount = MatchStore.matchCount
+    val matchDict by MatchStore.matchDict.collectAsState()
+    val matchCount = remember(matchDict) { matchDict.values.distinct().size }
 
     // 实时匹配预览
     var previewInput by remember { mutableStateOf("") }
-    var previewResult by remember { mutableStateOf<String?>(null) }
+
+    // 同时检查精确触发词和正则规则，响应 matchDict 变化
+    val previewResult by remember(previewInput, matchDict) {
+        derivedStateOf {
+            if (previewInput.isEmpty()) return@derivedStateOf null
+            // 1. 精确触发词（按长度降序，优先最长匹配）
+            val exactHit = matchDict.entries
+                .filter { !it.key.startsWith("__regex__") }
+                .sortedByDescending { it.key.length }
+                .firstOrNull { (trigger, _) -> previewInput.endsWith(trigger) }
+            if (exactHit != null) {
+                val replace = exactHit.value.replace.take(60) +
+                    if (exactHit.value.replace.length > 60) "…" else ""
+                return@derivedStateOf "✓ 触发：${exactHit.key}\n→ $replace"
+            }
+            // 2. 正则规则
+            val regexHit = matchDict.entries
+                .filter { it.key.startsWith("__regex__") }
+                .firstOrNull { (key, _) ->
+                    val pattern = key.removePrefix("__regex__")
+                    runCatching { Regex(pattern).containsMatchIn(previewInput) }.getOrElse { false }
+                }
+            if (regexHit != null) {
+                val pattern = regexHit.key.removePrefix("__regex__")
+                val replace = regexHit.value.replace.take(60) +
+                    if (regexHit.value.replace.length > 60) "…" else ""
+                return@derivedStateOf "✓ 正则：$pattern\n→ $replace"
+            }
+            null
+        }
+    }
 
     // 扩展历史（最近 20 条）
     var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
@@ -148,22 +180,7 @@ fun ExpansionTestPage() {
                 )
                 OutlinedTextField(
                     value = previewInput,
-                    onValueChange = { input ->
-                        previewInput = input
-                        // 同步匹配（TriggerMatcher 在 IO 需要 suspend，这里做简单的精确匹配预览）
-                        val exactMatches = MatchStore.exactMatches
-                        val found = exactMatches.entries
-                            .sortedByDescending { it.key.length }
-                            .firstOrNull { (trigger, _) -> input.endsWith(trigger) }
-                        previewResult = if (found != null) {
-                            val match = found.value
-                            val trigger = found.key
-                            val replace = match.replace.take(60) + if (match.replace.length > 60) "…" else ""
-                            "✓ 触发：$trigger\n→ $replace"
-                        } else {
-                            null
-                        }
-                    },
+                    onValueChange = { previewInput = it },
                     label = { Text("输入文本") },
                     placeholder = { Text("例如：输入 :eml 查看匹配结果") },
                     modifier = Modifier.fillMaxWidth(),
@@ -171,7 +188,7 @@ fun ExpansionTestPage() {
                 )
                 if (previewResult != null) {
                     Text(
-                        text = previewResult!!,
+                        text = previewResult ?: "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                     )

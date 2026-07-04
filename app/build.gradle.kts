@@ -159,6 +159,9 @@ android {
         "**/custom.config.conf",
         "**/custom.config.yaml",
     )
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 if (project.hasProperty("EPSO_RENAME_APK_FLAG")) {
@@ -206,6 +209,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso)
 

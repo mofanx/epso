@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import li.mofanx.epso.appScope
 import li.mofanx.epso.util.LogUtils
@@ -28,6 +30,9 @@ private const val TAG = "MatchStore"
 object MatchStore {
 
     private var workspace: YamlWorkspace = YamlWorkspace(matchesFolder)
+
+    /** 序列化所有文件写入操作，防止并发 read-modify-write 竞争 */
+    private val writeMutex = Mutex()
 
     // ── 对外 StateFlow ──────────────────────────────────────────────
 
@@ -87,24 +92,26 @@ object MatchStore {
      * 向指定文件添加规则
      */
     suspend fun addMatch(groupFile: File, match: Match) {
-        withContext(Dispatchers.IO) {
-            val group = workspace.readFile(groupFile)
-            val updated = group.copy(matches = group.matches + match)
-            workspace.writeFile(groupFile, updated)
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val group = workspace.readFile(groupFile)
+                workspace.writeFile(groupFile, group.copy(matches = group.matches + match))
+            }
         }
         reload()
     }
 
     /**
-     * 更新规则（通过触发词定位旧规则）
+     * 更新规则（通过对象相等性定位旧规则）
      */
     suspend fun updateMatch(groupFile: File, oldMatch: Match, newMatch: Match) {
-        withContext(Dispatchers.IO) {
-            val group = workspace.readFile(groupFile)
-            val updated = group.copy(
-                matches = group.matches.map { if (it == oldMatch) newMatch else it }
-            )
-            workspace.writeFile(groupFile, updated)
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val group = workspace.readFile(groupFile)
+                workspace.writeFile(groupFile, group.copy(
+                    matches = group.matches.map { if (it == oldMatch) newMatch else it }
+                ))
+            }
         }
         reload()
     }
@@ -113,10 +120,13 @@ object MatchStore {
      * 删除规则
      */
     suspend fun deleteMatch(groupFile: File, match: Match) {
-        withContext(Dispatchers.IO) {
-            val group = workspace.readFile(groupFile)
-            val updated = group.copy(matches = group.matches.filter { it != match })
-            workspace.writeFile(groupFile, updated)
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val group = workspace.readFile(groupFile)
+                workspace.writeFile(groupFile, group.copy(
+                    matches = group.matches.filter { it != match }
+                ))
+            }
         }
         reload()
     }
@@ -125,9 +135,11 @@ object MatchStore {
      * 更新某文件的全局变量
      */
     suspend fun updateGlobalVars(groupFile: File, vars: List<Var>) {
-        withContext(Dispatchers.IO) {
-            val group = workspace.readFile(groupFile)
-            workspace.writeFile(groupFile, group.copy(globalVars = vars))
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val group = workspace.readFile(groupFile)
+                workspace.writeFile(groupFile, group.copy(globalVars = vars))
+            }
         }
         reload()
     }
@@ -164,12 +176,14 @@ object MatchStore {
      * @param packageName 包名，对应 packages/<packageName>/package.yml
      */
     suspend fun addPackageImport(packageName: String) {
-        withContext(Dispatchers.IO) {
-            val baseFile = workspace.listFiles().firstOrNull() ?: return@withContext
-            val group = workspace.readFile(baseFile)
-            val importPath = "packages/$packageName/package.yml"
-            if (importPath !in group.imports) {
-                workspace.writeFile(baseFile, group.copy(imports = group.imports + importPath))
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val baseFile = workspace.listFiles().firstOrNull() ?: return@withContext
+                val group = workspace.readFile(baseFile)
+                val importPath = "packages/$packageName/package.yml"
+                if (importPath !in group.imports) {
+                    workspace.writeFile(baseFile, group.copy(imports = group.imports + importPath))
+                }
             }
         }
         reload()
@@ -179,12 +193,14 @@ object MatchStore {
      * 卸载包后从 base.yml imports 中移除对应路径
      */
     suspend fun removePackageImport(packageName: String) {
-        withContext(Dispatchers.IO) {
-            val baseFile = workspace.listFiles().firstOrNull() ?: return@withContext
-            val group = workspace.readFile(baseFile)
-            val importPath = "packages/$packageName/package.yml"
-            if (importPath in group.imports) {
-                workspace.writeFile(baseFile, group.copy(imports = group.imports - importPath))
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val baseFile = workspace.listFiles().firstOrNull() ?: return@withContext
+                val group = workspace.readFile(baseFile)
+                val importPath = "packages/$packageName/package.yml"
+                if (importPath in group.imports) {
+                    workspace.writeFile(baseFile, group.copy(imports = group.imports - importPath))
+                }
             }
         }
         reload()

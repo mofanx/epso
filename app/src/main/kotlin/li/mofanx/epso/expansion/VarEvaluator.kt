@@ -39,22 +39,22 @@ class VarEvaluator(
 ) {
     /**
      * 对 [replace] 字符串进行变量替换。
-     * 先应用全局变量，再应用 [localVars]（局部变量可覆盖同名全局变量）。
+     * 局部变量覆盖同名全局变量，合并后统一求值。
      */
     suspend fun evaluate(replace: String, localVars: List<Var>, depth: Int = 0): String {
         if (replace.isBlank()) return replace
         if (!replace.contains(VAR_PREFIX)) return replace
 
+        // 合并：局部变量覆盖同名全局变量
+        val merged = buildMap<String, Var> {
+            globalVars.forEach { put(it.name, it) }
+            localVars.forEach { put(it.name, it) }
+        }.values
+
         var result = replace
-
-        // 全局变量先处理（局部变量可覆盖）
-        for (v in globalVars) {
+        for (v in merged) {
             result = applyVar(result, v, depth)
         }
-        for (v in localVars) {
-            result = applyVar(result, v, depth)
-        }
-
         return result
     }
 
@@ -125,14 +125,19 @@ class VarEvaluator(
 
     /**
      * 将 strftime 格式（espanso 使用）转换为 Java DateTimeFormatter 格式。
-     * 覆盖常用格式符，不支持的保留原样。
+     *
+     * 非格式符的字母必须用 DateTimeFormatter 的 `'...'` 语法转义；
+     * 单引号本身转义为 `''`。
      */
     private fun strftimeToDateTimeFormatter(fmt: String): String {
-        val sb = StringBuilder()
+        // 先把 strftime 序列替换为 DTF 序列，非格式符收集后统一用 '...' 包裹
+        data class Token(val isDtf: Boolean, val value: String)
+
+        val tokens = mutableListOf<Token>()
         var i = 0
         while (i < fmt.length) {
             if (fmt[i] == '%' && i + 1 < fmt.length) {
-                val replacement = when (fmt[i + 1]) {
+                val dtf = when (fmt[i + 1]) {
                     'Y' -> "yyyy"
                     'y' -> "yy"
                     'm' -> "MM"
@@ -149,25 +154,43 @@ class VarEvaluator(
                     'j' -> "DDD"
                     'Z' -> "zzz"
                     'z' -> "Z"
-                    'e' -> "d"          // day without leading zero
-                    'k' -> "H"          // hour (0-23) without leading zero
-                    'l' -> "h"          // hour (1-12) without leading zero
-                    'n' -> "\n"
-                    't' -> "\t"
-                    '%' -> "%"
-                    else -> "%${fmt[i + 1]}"
+                    'e' -> "d"
+                    'k' -> "H"
+                    'l' -> "h"
+                    'n' -> null.also { tokens += Token(false, "\n") }
+                    't' -> null.also { tokens += Token(false, "\t") }
+                    '%' -> null.also { tokens += Token(false, "%") }
+                    else -> null.also { tokens += Token(false, "%${fmt[i + 1]}") }
                 }
-                sb.append(replacement)
+                if (dtf != null) tokens += Token(isDtf = true, value = dtf)
                 i += 2
             } else {
-                // 对 DateTimeFormatter 特殊字符转义
-                val c = fmt[i]
-                if (c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-                    sb.append("'$c'")
-                } else {
-                    sb.append(c)
-                }
+                tokens += Token(isDtf = false, value = fmt[i].toString())
                 i++
+            }
+        }
+
+        // 合并相邻非 DTF token，用 '...' 包裹（单引号自身转义为 ''）
+        val sb = StringBuilder()
+        var j = 0
+        while (j < tokens.size) {
+            val tok = tokens[j]
+            if (tok.isDtf) {
+                sb.append(tok.value)
+                j++
+            } else {
+                // 收集连续的 literal token
+                val literal = buildString {
+                    while (j < tokens.size && !tokens[j].isDtf) {
+                        append(tokens[j].value)
+                        j++
+                    }
+                }
+                if (literal.isNotEmpty()) {
+                    // 转义 literal 内的单引号，再用 '...' 包裹
+                    val escaped = literal.replace("'", "''")
+                    sb.append("'$escaped'")
+                }
             }
         }
         return sb.toString()
