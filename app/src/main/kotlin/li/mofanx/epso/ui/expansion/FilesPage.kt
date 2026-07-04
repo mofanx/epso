@@ -369,13 +369,11 @@ private fun FileCard(
  * 将 [srcDir] 下所有 .yml/.yaml 文件打包到 [destZip]
  */
 private fun zipWorkspaceDir(srcDir: File, destZip: File) {
-    val files = srcDir.listFiles { f ->
-        f.isFile && (f.extension == "yml" || f.extension == "yaml")
-    } ?: return
-
     java.util.zip.ZipOutputStream(destZip.outputStream().buffered()).use { zos ->
-        for (file in files) {
-            zos.putNextEntry(java.util.zip.ZipEntry(file.name))
+        // 递归打包整个工作区目录，保留相对路径（含 packages/ 子目录）
+        srcDir.walkTopDown().filter { it.isFile }.forEach { file ->
+            val entryName = file.relativeTo(srcDir).path
+            zos.putNextEntry(java.util.zip.ZipEntry(entryName))
             file.inputStream().use { it.copyTo(zos) }
             zos.closeEntry()
         }
