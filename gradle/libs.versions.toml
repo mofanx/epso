@@ -14,6 +14,7 @@ telephoto = "0.19.0"
 remap = "0.1.2"
 shizuku = "13.1.5"
 loc = "0.7.1"
+kaml = "0.61.0"
 
 [libraries]
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
@@ -67,6 +68,7 @@ coil-network = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = 
 coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
 telephoto-zoomable = { module = "me.saket.telephoto:zoomable", version.ref = "telephoto" }
 loc-annotation = { module = "li.songe.loc:loc-annotation", version.ref = "loc" }
+kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 reorderable = "sh.calvin.reorderable:reorderable:3.1.0"
 exp4j = "net.objecthunter:exp4j:0.4.8"
 toaster = "com.github.getActivity:Toaster:15.0"

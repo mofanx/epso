@@ -132,6 +132,15 @@ abstract class OverlayWindowService(
 
     private val windowManager by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
 
+    /**
+     * 子类可覆盖以定制 WindowManager flag。
+     * 默认 FLAG_NOT_FOCUSABLE（不可输入）；需要键盘输入的子类应去掉该 flag。
+     */
+    open val windowFlags: Int =
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
     @Composable
     abstract fun ComposeContent()
 
@@ -206,9 +215,7 @@ abstract class OverlayWindowService(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                windowFlags,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 windowAnimations = android.R.style.Animation_Dialog

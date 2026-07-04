@@ -47,6 +47,8 @@ val logFolder: File
     get() = filesDir.resolve("log").autoMk()
 val crashFolder: File
     get() = filesDir.resolve("crash").autoMk()
+val matchesFolder: File
+    get() = filesDir.resolve("matches").autoMk()
 val crashTempFolder: File
     get() = filesDir.resolve("crash/temp").autoMk()
 

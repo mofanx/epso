@@ -30,9 +30,11 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import li.mofanx.epso.data.CrashData
 import li.mofanx.epso.data.selfAppInfo
+import li.mofanx.epso.expansion.MatchStore
 import li.mofanx.epso.notif.initChannel
 import li.mofanx.epso.shizuku.initShizuku
 import li.mofanx.epso.store.initStore
+import li.mofanx.epso.store.storeFlow
 import li.mofanx.epso.util.AndroidTarget
 import li.mofanx.epso.util.LogUtils
 import li.mofanx.epso.util.PKG_FLAGS
@@ -235,5 +237,6 @@ class App : Application() {
         initChannel()
         initAppState()
         initShizuku()
+        MatchStore.init(storeFlow.value.expansionWorkspacePath)
     }
 }

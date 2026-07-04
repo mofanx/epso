@@ -31,7 +31,7 @@ sealed class BottomNavItem(
     data object Expansion : BottomNavItem(
         key = 1,
         label = "扩展",
-        icon = PerfIcon.Settings,
+        icon = PerfIcon.TextFields,
     )
 
     data object Settings : BottomNavItem(

@@ -1,250 +1,276 @@
 package li.mofanx.epso.expansion
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
-import li.mofanx.epso.app
-import li.mofanx.epso.appScope
-import li.mofanx.epso.expansion.ExpansionService
+import li.mofanx.epso.ui.style.itemHorizontalPadding
+import li.mofanx.epso.ui.style.itemVerticalPadding
+import li.mofanx.epso.ui.style.surfaceCardColors
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 文本扩展测试页
+ *
+ * - 服务状态卡片（运行中 / 已停止，当前扩展状态）
+ * - 实时匹配预览：在页面内输入文本，展示哪条规则会被触发
+ * - 扩展历史：最近 20 条成功 / 失败记录
+ */
 @Composable
 fun ExpansionTestPage() {
-    val scope = rememberCoroutineScope()
-    val expansionService = ExpansionService.getInstance()
-    
-    // 测试匹配规则
-    var trigger by remember { mutableStateOf("eml") }
-    var replace by remember { mutableStateOf("myemail@example.com") }
-    var isRegex by remember { mutableStateOf(false) }
-    var word by remember { mutableStateOf(true) }
-    
-    // 状态显示
     val isRunning by ExpansionService.isRunning.collectAsState()
-    val matchCount by produceState(initialValue = 0) {
-        value = expansionService?.getMatchCount() ?: 0
-    }
-    
-    // 测试日志
-    var logs by remember { mutableStateOf(listOf<String>()) }
-    
-    fun addLog(message: String) {
-        logs = logs + "[${System.currentTimeMillis()}] $message"
-        if (logs.size > 20) logs = logs.drop(1)
-    }
-    
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("文本扩展测试") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            )
+    val expansionState by (ExpansionService.getInstance()?.expansionState
+        ?.collectAsState()
+        ?: remember { mutableStateOf(ExpansionState.Idle) })
+    val matchCount = MatchStore.matchCount
+
+    // 实时匹配预览
+    var previewInput by remember { mutableStateOf("") }
+    var previewResult by remember { mutableStateOf<String?>(null) }
+
+    // 扩展历史（最近 20 条）
+    var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
+
+    // 监听扩展状态写入历史
+    LaunchedEffect(expansionState) {
+        when (val s = expansionState) {
+            is ExpansionState.Completed -> {
+                val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                history = (listOf(
+                    HistoryEntry(ts, true, "${s.trigger} → ${s.expandedText}")
+                ) + history).take(20)
+            }
+            is ExpansionState.Failed -> {
+                val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                history = (listOf(
+                    HistoryEntry(ts, false, s.error)
+                ) + history).take(20)
+            }
+            else -> {}
         }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    }
+
+    Column(
+        modifier = Modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = itemHorizontalPadding),
+        verticalArrangement = Arrangement.spacedBy(itemHorizontalPadding / 2),
+    ) {
+        // ── 服务状态 ──────────────────────────────────────────────
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = surfaceCardColors,
         ) {
-            // 服务状态
-            Card {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+            Column(
+                modifier = Modifier.padding(itemVerticalPadding),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "服务状态",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        "服务状态: ${if (isRunning) "运行中" else "已停止"}",
-                        style = MaterialTheme.typography.titleMedium
+                        text = if (isRunning) "运行中" else "已停止",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isRunning)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.error,
                     )
                     Text(
-                        "当前匹配规则数: $matchCount",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "已加载 $matchCount 条规则",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                val stateText = when (val s = expansionState) {
+                    is ExpansionState.Idle -> null
+                    is ExpansionState.Matching -> "匹配中…"
+                    is ExpansionState.Expanding -> "替换中…"
+                    is ExpansionState.Completed -> "✓ ${s.trigger} → ${s.expandedText}"
+                    is ExpansionState.Failed -> "✗ ${s.error}"
+                }
+                if (stateText != null) {
+                    Text(
+                        text = stateText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            
-            // 添加匹配规则
-            Card {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+        }
+
+        // ── 实时匹配预览 ──────────────────────────────────────────
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = surfaceCardColors,
+        ) {
+            Column(
+                modifier = Modifier.padding(itemVerticalPadding),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "实时匹配预览",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "在下方输入文本，查看哪条规则会被触发（仅预览，不实际替换）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = previewInput,
+                    onValueChange = { input ->
+                        previewInput = input
+                        // 同步匹配（TriggerMatcher 在 IO 需要 suspend，这里做简单的精确匹配预览）
+                        val exactMatches = MatchStore.exactMatches
+                        val found = exactMatches.entries
+                            .sortedByDescending { it.key.length }
+                            .firstOrNull { (trigger, _) -> input.endsWith(trigger) }
+                        previewResult = if (found != null) {
+                            val match = found.value
+                            val trigger = found.key
+                            val replace = match.replace.take(60) + if (match.replace.length > 60) "…" else ""
+                            "✓ 触发：$trigger\n→ $replace"
+                        } else {
+                            null
+                        }
+                    },
+                    label = { Text("输入文本") },
+                    placeholder = { Text("例如：输入 :eml 查看匹配结果") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                )
+                if (previewResult != null) {
                     Text(
-                        "添加匹配规则",
-                        style = MaterialTheme.typography.titleMedium
+                        text = previewResult!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
                     )
-                    
-                    OutlinedTextField(
-                        value = trigger,
-                        onValueChange = { trigger = it },
-                        label = { Text("触发器") },
-                        placeholder = { Text("例如: eml") },
-                        modifier = Modifier.fillMaxWidth()
+                } else if (previewInput.isNotEmpty()) {
+                    Text(
+                        text = "— 无匹配规则",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    
-                    OutlinedTextField(
-                        value = replace,
-                        onValueChange = { replace = it },
-                        label = { Text("替换文本") },
-                        placeholder = { Text("例如: myemail@example.com") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
+                }
+            }
+        }
+
+        // ── 扩展历史 ──────────────────────────────────────────────
+        if (history.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = surfaceCardColors,
+            ) {
+                Column(
+                    modifier = Modifier.padding(itemVerticalPadding),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Checkbox(
-                            checked = isRegex,
-                            onCheckedChange = { isRegex = it }
-                        )
-                        Text("正则表达式")
-                        
-                        Spacer(modifier = Modifier.width(16.dp))
-                        
-                        Checkbox(
-                            checked = word,
-                            onCheckedChange = { word = it }
-                        )
-                        Text("单词边界")
-                    }
-                    
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                val match = Match(
-                                    trigger = if (isRegex) "" else trigger,
-                                    replace = replace,
-                                    regex = if (isRegex) trigger else "",
-                                    word = word
-                                )
-                                expansionService?.addMatch(match)
-                                addLog("添加规则: $trigger -> $replace")
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("添加规则")
-                    }
-                }
-            }
-            
-            // 测试操作
-            Card {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "测试操作",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    expansionService?.clearMatches()
-                                    addLog("清空所有规则")
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("清空规则")
-                        }
-                        
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    val count = expansionService?.getMatchCount() ?: 0
-                                    addLog("当前规则数: $count")
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("查询数量")
-                        }
-                    }
-                }
-            }
-            
-            // 测试日志
-            Card {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "操作日志",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    
-                    if (logs.isEmpty()) {
                         Text(
-                            "暂无日志",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "扩展历史",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
                         )
-                    } else {
-                        logs.forEach { log ->
+                        TextButton(onClick = { history = emptyList() }) {
+                            Text("清空")
+                        }
+                    }
+                    history.forEach { entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             Text(
-                                log,
+                                text = entry.timestamp,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                            Text(
+                                text = entry.text,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (entry.success)
+                                    MaterialTheme.colorScheme.onSurface
+                                else
+                                    MaterialTheme.colorScheme.error,
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
                 }
             }
-            
-            // 使用说明
-            Card {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+        }
+
+        // ── 使用说明 ──────────────────────────────────────────────
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = surfaceCardColors,
+        ) {
+            Column(
+                modifier = Modifier.padding(itemVerticalPadding),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "使用说明",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                listOf(
+                    "1. 在首页开启无障碍服务",
+                    "2. 点击右上角列表图标管理规则（支持 espanso YAML 格式）",
+                    "3. 在任意输入框输入触发词，即可自动替换",
+                    "4. 替换文本支持 {{var}} 变量和 \$|\$ 光标定位",
+                    "5. 规则文件保存在 matches/ 目录，可用 Syncthing 同步",
+                ).forEach {
                     Text(
-                        "使用说明",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    
-                    Text(
-                        "1. 确保无障碍服务已启动",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        "2. 添加匹配规则（触发器 -> 替换文本）",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        "3. 在任何应用中输入触发器文本",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        "4. 触发器会自动扩展为替换文本",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        "5. 例如输入 'eml' 会自动变为 'myemail@example.com'",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
     }
 }
+
+private data class HistoryEntry(
+    val timestamp: String,
+    val success: Boolean,
+    val text: String,
+)

@@ -78,6 +78,18 @@ import li.mofanx.epso.ui.AboutPage
 import li.mofanx.epso.ui.AboutRoute
 import li.mofanx.epso.ui.AdvancedPage
 import li.mofanx.epso.ui.AdvancedRoute
+import li.mofanx.epso.ui.expansion.FilesPage
+import li.mofanx.epso.ui.expansion.FilesRoute
+import li.mofanx.epso.ui.expansion.GlobalVarsPage
+import li.mofanx.epso.ui.expansion.GlobalVarsRoute
+import li.mofanx.epso.ui.expansion.PackageStorePage
+import li.mofanx.epso.ui.expansion.PackageStoreRoute
+import li.mofanx.epso.ui.expansion.SyncSettingsPage
+import li.mofanx.epso.ui.expansion.SyncSettingsRoute
+import li.mofanx.epso.ui.expansion.MatchEditorPage
+import li.mofanx.epso.ui.expansion.MatchEditorRoute
+import li.mofanx.epso.ui.expansion.MatchListPage
+import li.mofanx.epso.ui.expansion.MatchListRoute
 import li.mofanx.epso.ui.AppOpsAllowPage
 import li.mofanx.epso.ui.AppOpsAllowRoute
 import li.mofanx.epso.ui.AuthA11yPage
@@ -233,6 +245,12 @@ class MainActivity : ComponentActivity() {
                             entry<WebViewRoute> { WebViewPage(it) }
                             entry<ImagePreviewRoute> { ImagePreviewPage(it) }
                             entry<CrashReportRoute> { CrashReportPage() }
+                            entry<MatchListRoute> { MatchListPage() }
+                            entry<MatchEditorRoute> { MatchEditorPage(it) }
+                            entry<FilesRoute> { FilesPage() }
+                            entry<GlobalVarsRoute> { GlobalVarsPage() }
+                            entry<SyncSettingsRoute> { SyncSettingsPage() }
+                            entry<PackageStoreRoute> { PackageStorePage() }
                         },
                         transitionSpec = {
                             slideInHorizontally(initialOffsetX = { it }) togetherWith

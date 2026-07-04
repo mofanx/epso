@@ -254,4 +254,6 @@ dependencies {
     compileOnly(libs.loc.annotation)
 
     implementation(libs.kevinnzouWebview)
+
+    implementation(libs.kaml)
 }

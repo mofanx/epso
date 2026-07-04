@@ -2,119 +2,139 @@ package li.mofanx.epso.expansion
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 触发器匹配器
- * 负责检测输入文本是否匹配某个触发器
+ *
+ * 支持：
+ * - 精确匹配（allTriggers 展开后各自入库）
+ * - 正则匹配
+ * - word / left_word / right_word 细粒度单词边界（对照 espansogo 实现）
+ *
+ * 单词边界规则（与 espanso 一致）：
+ * - word = true       → 触发词左右两侧必须是分隔符或字符串边界
+ * - left_word = true  → 触发词左侧必须是分隔符或字符串起始
+ * - right_word = true → 触发词右侧必须是分隔符或字符串末尾
+ * - word = false, left_word = false, right_word = false → 无边界限制（子串匹配）
  */
 class TriggerMatcher {
-    private val exactMatches = ConcurrentHashMap<String, Match>()
-    private val regexMatches = ConcurrentHashMap<Regex, Match>()
+
+    // trigger → Match（每个 allTriggers 条目分别入库）
+    private val exactMatches = LinkedHashMap<String, Match>()
+
+    // regex pattern → (Regex, Match)
+    private val regexMatches = LinkedHashMap<String, Pair<Regex, Match>>()
+
     private val mutex = Mutex()
-    
-    // 单词边界分隔符
-    private val wordSeparators = setOf(' ', '\n', '\r', '\t', ',')
-    
-    /**
-     * 添加匹配规则
-     */
+
+    // 单词分隔符集合（与 espansogo 保持一致）
+    private val wordSeparators = setOf(
+        ' ', '\n', '\r', '\t', ',', '.', ';', ':', '!', '?',
+        '(', ')', '[', ']', '{', '}', '"', '\'', '/', '\\',
+        '-', '+', '*', '=', '<', '>', '&', '|', '@', '#', '%',
+        '^', '~', '`',
+    )
+
+    // ──────────────────────────────────────────────────────────────
+    // 规则管理
+    // ──────────────────────────────────────────────────────────────
+
     suspend fun addMatch(match: Match) = mutex.withLock {
-        if (match.isRegex && match.regex.isNotEmpty()) {
-            try {
-                val regex = Regex(match.regex)
-                regexMatches[regex] = match
-            } catch (exception: Exception) {
-                // 忽略无效的正则表达式
+        if (match.isRegex) {
+            runCatching { Regex(match.regex) }.getOrNull()?.let { regex ->
+                regexMatches[match.regex] = regex to match
             }
-        } else if (match.trigger.isNotEmpty()) {
-            exactMatches[match.trigger] = match
+        } else {
+            for (trigger in match.allTriggers) {
+                exactMatches[trigger] = match
+            }
         }
     }
-    
-    /**
-     * 移除匹配规则
-     */
-    suspend fun removeMatch(trigger: String) = mutex.withLock {
-        exactMatches.remove(trigger)
-        // 同时移除对应的正则匹配
-        val toRemove = regexMatches.filter { it.value.trigger == trigger }.keys
-        toRemove.forEach { regexMatches.remove(it) }
-    }
-    
-    /**
-     * 清空所有匹配规则
-     */
+
     suspend fun clear() = mutex.withLock {
         exactMatches.clear()
         regexMatches.clear()
     }
-    
+
+    suspend fun getMatchCount(): Int = mutex.withLock {
+        exactMatches.values.distinct().size + regexMatches.size
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // 匹配
+    // ──────────────────────────────────────────────────────────────
+
     /**
-     * 匹配文本，返回匹配结果
+     * 在 [text] 中查找匹配的触发词，返回第一个匹配结果。
+     * 精确匹配优先于正则匹配。
      */
     suspend fun match(text: String): MatchResult? = mutex.withLock {
-        // 先尝试精确匹配
-        val exactResult = findExactMatch(text)
-        if (exactResult != null) {
-            return exactResult
-        }
-        
-        // 再尝试正则匹配
-        return findRegexMatch(text)
+        findExactMatch(text) ?: findRegexMatch(text)
     }
-    
-    /**
-     * 精确匹配
-     */
+
+    // ── 精确匹配 ──────────────────────────────────────────────────
+
     private fun findExactMatch(text: String): MatchResult? {
-        // 检查每个精确触发器
-        for ((trigger, match) in exactMatches) {
-            if (text.endsWith(trigger)) {
-                // 检查单词边界
-                if (match.word) {
-                    val textLength = text.length
-                    val triggerLength = trigger.length
-                    if (textLength > triggerLength) {
-                        val charBefore = text[textLength - triggerLength - 1]
-                        if (charBefore !in wordSeparators) {
-                            continue
-                        }
-                    }
-                }
+        // 从最长触发词开始匹配（避免短触发词误触长触发词）
+        val sorted = exactMatches.entries.sortedByDescending { it.key.length }
+        for ((trigger, match) in sorted) {
+            val idx = text.lastIndexOf(trigger)
+            if (idx < 0) continue
+
+            if (checkWordBoundary(text, idx, trigger.length, match)) {
                 return MatchResult(
                     match = match,
                     matchedText = trigger,
-                    startIndex = text.length - trigger.length
+                    startIndex = idx,
+                    endIndex = idx + trigger.length,
                 )
             }
         }
         return null
     }
-    
-    /**
-     * 正则匹配
-     */
+
+    // ── 正则匹配 ──────────────────────────────────────────────────
+
     private fun findRegexMatch(text: String): MatchResult? {
-        for ((regex, match) in regexMatches) {
-            val result = regex.find(text)
-            if (result != null) {
-                return MatchResult(
-                    match = match,
-                    matchedText = result.value,
-                    startIndex = result.range.first,
-                    endIndex = result.range.last + 1
-                )
-            }
+        for ((_, pair) in regexMatches) {
+            val (regex, match) = pair
+            val result = regex.find(text) ?: continue
+            return MatchResult(
+                match = match,
+                matchedText = result.value,
+                startIndex = result.range.first,
+                endIndex = result.range.last + 1,
+            )
         }
         return null
     }
-    
+
+    // ── 单词边界检查 ──────────────────────────────────────────────
+
     /**
-     * 获取所有匹配规则数量
+     * 检查 [text] 中位于 [startIndex]..[startIndex]+[len] 的触发词是否满足边界条件。
      */
-    suspend fun getMatchCount(): Int = mutex.withLock {
-        exactMatches.size + regexMatches.size
+    private fun checkWordBoundary(
+        text: String,
+        startIndex: Int,
+        len: Int,
+        match: Match,
+    ): Boolean {
+        val checkLeft = match.word || match.leftWord
+        val checkRight = match.word || match.rightWord
+
+        if (checkLeft) {
+            val leftOk = startIndex == 0 || text[startIndex - 1] in wordSeparators
+            if (!leftOk) return false
+        }
+
+        if (checkRight) {
+            val afterIndex = startIndex + len
+            val rightOk = afterIndex >= text.length || text[afterIndex] in wordSeparators
+            if (!rightOk) return false
+        }
+
+        return true
     }
 }
 
@@ -125,5 +145,5 @@ data class MatchResult(
     val match: Match,
     val matchedText: String,
     val startIndex: Int,
-    val endIndex: Int = startIndex + matchedText.length
+    val endIndex: Int = startIndex + matchedText.length,
 )

@@ -41,6 +41,11 @@ import li.mofanx.epso.MainActivity
 import li.mofanx.epso.R
 import li.mofanx.epso.expansion.ExpansionService
 import li.mofanx.epso.expansion.ExpansionTestPage
+import li.mofanx.epso.expansion.MatchStore
+import li.mofanx.epso.ui.expansion.FilesRoute
+import li.mofanx.epso.ui.expansion.GlobalVarsRoute
+import li.mofanx.epso.ui.expansion.MatchListRoute
+import li.mofanx.epso.ui.expansion.PackageStoreRoute
 import li.mofanx.epso.permission.appOpsRestrictedFlow
 import li.mofanx.epso.permission.writeSecureSettingsState
 import li.mofanx.epso.service.StatusService
@@ -63,17 +68,52 @@ import li.mofanx.epso.util.throttle
 
 @Composable
 fun useExpansionPage(): ScaffoldExt {
+    val mainVm = LocalMainViewModel.current
     val scrollKey = rememberSaveable { mutableIntStateOf(0) }
     val (scrollBehavior, scrollState) = useScrollBehaviorState(scrollKey)
-    
+    val matchCount = MatchStore.matchCount
+
+    LaunchedEffect(null) {
+        mainVm.resetPageScrollEvent.collect {
+            if (it == BottomNavItem.Expansion) scrollKey.intValue++
+        }
+    }
+
     return ScaffoldExt(
         navItem = BottomNavItem.Expansion,
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            PerfTopAppBar(scrollBehavior = scrollBehavior, title = {
-                Text("文本扩展")
-            })
-        }
+            PerfTopAppBar(
+                scrollBehavior = scrollBehavior,
+                title = { Text("文本扩展") },
+                actions = {
+                    PerfIconButton(
+                        imageVector = PerfIcon.RocketLaunch,
+                        contentDescription = "包商店",
+                        onClickLabel = "前往 espanso Hub 包商店",
+                        onClick = throttle { mainVm.navigatePage(PackageStoreRoute) },
+                    )
+                    PerfIconButton(
+                        imageVector = PerfIcon.TextFields,
+                        contentDescription = "全局变量",
+                        onClickLabel = "前往全局变量管理页面",
+                        onClick = throttle { mainVm.navigatePage(GlobalVarsRoute) },
+                    )
+                    PerfIconButton(
+                        imageVector = PerfIcon.Layers,
+                        contentDescription = "文件管理",
+                        onClickLabel = "前往文件管理页面",
+                        onClick = throttle { mainVm.navigatePage(FilesRoute) },
+                    )
+                    PerfIconButton(
+                        imageVector = PerfIcon.FormatListBulleted,
+                        contentDescription = "规则管理",
+                        onClickLabel = "前往规则管理页面",
+                        onClick = throttle { mainVm.navigatePage(MatchListRoute) },
+                    )
+                },
+            )
+        },
     ) { contentPadding ->
         Box(modifier = Modifier.padding(contentPadding)) {
             ExpansionTestPage()
