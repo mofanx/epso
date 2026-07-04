@@ -1,4 +1,4 @@
-rootProject.name = "ank"
+rootProject.name = "epso"
 include(
     ":app",
     ":hidden_api",

@@ -1,4 +1,4 @@
-# ank
+# epso
 
 基于 Android 无障碍服务的通用 APP 开发框架，集成 Shizuku、HTTP Server、Compose UI 组件库等基础设施。
 
@@ -9,7 +9,7 @@
 - **HTTP Server** — 内嵌 Ktor CIO 服务器
 - **Compose UI 组件库** — Material 3 + Navigation 3
 - **快速设置磁贴** — 通用 TileService
-- **自定义 Scheme** — `ank://` 深度链接
+- **自定义 Scheme** — `epso://` 深度链接
 
 ## 技术栈
 

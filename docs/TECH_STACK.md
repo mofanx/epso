@@ -1,8 +1,8 @@
-# ank 技术栈
+# epso 技术栈
 
 ## 项目概况
 
-**ank** 是一个基于 Android 无障碍服务的通用 APP 开发框架，包含两个子模块：
+**epso** 是一个基于 Android 无障碍服务的通用 APP 开发框架，包含两个子模块：
 
 | 模块 | 类型 | 说明 |
 |---|---|---|
@@ -19,7 +19,7 @@
 - **JVM Target**: Java 11
 - **compileSdk**: 37 / **minSdk**: 26 / **targetSdk**: 37
 - **ABI**: arm64-v8a, x86_64
-- **产品渠道**: `ank` (默认) / `play` (Google Play)
+- **产品渠道**: `epso` (默认) / `play` (Google Play)
 
 ---
 
@@ -47,7 +47,7 @@
 - **无障碍服务** — 核心功能基础
 - **前台服务** — 截图、状态、HTTP 等通用 FGS
 - **快速设置磁贴** — 通用 TileService
-- **自定义 Scheme** — `ank://` 深度链接
+- **自定义 Scheme** — `epso://` 深度链接
 
 ### 工具库
 - **exp4j** (0.4.8) — 表达式求值
@@ -77,4 +77,4 @@
 1. **无障碍服务框架** — 通过 `AccessibilityService` 提供通用无障碍服务基础设施
 2. **内嵌 HTTP Server** — Ktor CIO 引擎，供外部连接调试
 3. **Shizuku 集成** — 免 Root 执行高权限操作（如 `WRITE_SECURE_SETTINGS`）
-4. **多渠道分发** — ank 渠道和 play 渠道
+4. **多渠道分发** — epso 渠道和 play 渠道

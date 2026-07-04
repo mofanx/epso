@@ -58,9 +58,9 @@ plugins {
 }
 
 android {
-    namespace = "li.mofanx.ank"
+    namespace = "li.mofanx.epso"
     defaultConfig {
-        applicationId = "li.mofanx.ank"
+        applicationId = "li.mofanx.epso"
         versionCode = 92
         versionName = "1.12.1"
 
@@ -87,12 +87,12 @@ android {
         resValues = true
     }
 
-    val ankSigningConfig = if (project.hasProperty("ANK_STORE_FILE")) {
-        signingConfigs.create("ank") {
-            storeFile = file(project.properties["ANK_STORE_FILE"] as String)
-            storePassword = project.findProperty("ANK_STORE_PASSWORD")?.toString()
-            keyAlias = project.findProperty("ANK_KEY_ALIAS")?.toString()
-            keyPassword = project.findProperty("ANK_KEY_PASSWORD")?.toString()
+    val epsoSigningConfig = if (project.hasProperty("EPSO_STORE_FILE")) {
+        signingConfigs.create("epso") {
+            storeFile = file(project.properties["EPSO_STORE_FILE"] as String)
+            storePassword = project.findProperty("EPSO_STORE_PASSWORD")?.toString()
+            keyAlias = project.findProperty("EPSO_KEY_ALIAS")?.toString()
+            keyPassword = project.findProperty("EPSO_KEY_PASSWORD")?.toString()
         }
     } else {
         signingConfigs.getByName("debug")
@@ -106,7 +106,7 @@ android {
             keyPassword = project.properties["PLAY_KEY_PASSWORD"].toString()
         }
     } else {
-        ankSigningConfig
+        epsoSigningConfig
     }
 
     buildTypes {
@@ -123,7 +123,7 @@ android {
             )
         }
         debug {
-            signingConfig = ankSigningConfig
+            signingConfig = epsoSigningConfig
             applicationIdSuffix = ".debug"
             resValue("color", "better_black", "#FF5D92")
             debugSuffixPairList.onEach { (key, value) ->
@@ -133,9 +133,9 @@ android {
     }
     productFlavors {
         flavorDimensions += "channel"
-        create("ank") {
+        create("epso") {
             isDefault = true
-            signingConfig = ankSigningConfig
+            signingConfig = epsoSigningConfig
             resValue("bool", "is_accessibility_tool", "true")
         }
         create("play") {
@@ -161,11 +161,11 @@ android {
     )
 }
 
-if (project.hasProperty("ANK_RENAME_APK_FLAG")) {
+if (project.hasProperty("EPSO_RENAME_APK_FLAG")) {
     androidComponents.onVariants { variant ->
         variant.outputs.onEach { output ->
             output as VariantOutputImpl
-            output.outputFileName = "ank-v${output.versionName.get()}.apk"
+            output.outputFileName = "epso-v${output.versionName.get()}.apk"
         }
     }
 }

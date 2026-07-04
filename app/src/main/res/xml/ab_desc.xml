@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackAllMask"
     android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews|flagDefault|flagRetrieveInteractiveWindows"
     android:canPerformGestures="true"
@@ -10,5 +10,5 @@
     android:isAccessibilityTool="@bool/is_accessibility_tool"
     android:description="@string/a11y_desc"
     android:notificationTimeout="100"
-    android:settingsActivity="li.mofanx.ank.MainActivity"
+    android:settingsActivity="li.mofanx.epso.MainActivity"
     tools:ignore="UnusedAttribute" />

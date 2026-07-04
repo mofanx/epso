@@ -1,0 +1,11 @@
+package li.mofanx.epso
+
+import android.app.Activity
+import android.os.Bundle
+
+class OpenSchemeActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        navToMainActivity()
+    }
+}

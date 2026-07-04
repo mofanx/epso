@@ -5,4 +5,4 @@
 - 移除 Room/KSP 数据库层
 - 移除 selector 模块
 - 保留 Shizuku、无障碍服务、HTTP Server、Compose UI 组件库等基础设施
-- 编译验证通过 (`:app:compileAnkDebugKotlin`)
+- 编译验证通过 (`:app:compileEpsoDebugKotlin`)
