@@ -14,6 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
@@ -159,7 +160,8 @@ fun SyncSettingsPage() {
                     readOnly = true,
                     label = { Text("同步方式") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(methodMenuExpanded) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    modifier = Modifier.fillMaxWidth()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                 )
                 ExposedDropdownMenu(
                     expanded = methodMenuExpanded,
@@ -180,7 +182,6 @@ fun SyncSettingsPage() {
                     when (currentMethod) {
                         SyncMethod.LocalFolder -> "本地文件夹路径"
                         SyncMethod.WebDav -> "WebDAV 配置"
-                        else -> "连接配置"
                     }
                 )
 
@@ -238,7 +239,6 @@ fun SyncSettingsPage() {
                             },
                         )
                     }
-                    else -> {}
                 }
 
                 // ── 冲突策略 ───────────────────────────────────
@@ -255,7 +255,8 @@ fun SyncSettingsPage() {
                         readOnly = true,
                         label = { Text("冲突策略") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(conflictMenuExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        modifier = Modifier.fillMaxWidth()
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                     )
                     ExposedDropdownMenu(
                         expanded = conflictMenuExpanded,
