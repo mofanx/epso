@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" debug_suffix="true">ANK</string>
-    <string name="a11y_desc">通用无障碍服务框架\n\n提供无障碍服务基础设施，支持 Shizuku 集成、HTTP Server、悬浮窗等系统能力</string>
+    <string name="app_name" debug_suffix="true">epso</string>
+    <string name="a11y_desc">文本扩展服务\n\n监听文本输入，根据用户自定义规则将触发词自动替换为预设文本，支持变量展开和多规则匹配</string>
     <string name="http_server" debug_suffix="true">HTTP服务</string>
 </resources>

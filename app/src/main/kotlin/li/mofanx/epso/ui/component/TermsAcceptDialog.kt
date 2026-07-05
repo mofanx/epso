@@ -41,7 +41,7 @@ fun TermsAcceptDialog() {
                 Text(
                     modifier = modifier,
                     text = buildAnnotatedString {
-                        append("感谢使用 ANK！您需要阅读并同意「")
+                        append("感谢使用 epso！您需要阅读并同意「")
                         withLink(
                             LinkAnnotation.Url(
                                 "https://github.com/mofanx/epso/blob/main/LICENSE",
@@ -66,7 +66,7 @@ fun TermsAcceptDialog() {
             "关于无障碍" to @Composable {
                 Text(
                     modifier = modifier,
-                    text = "ANK 请求使用系统「无障碍 API」获取屏幕信息, 以此基于用户自定义订阅规则执行自动化操作",
+                    text = "epso 请求使用系统「无障碍 API」监听文本输入, 以此根据用户自定义规则将触发词自动替换为预设文本",
                 )
             }
         )

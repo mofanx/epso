@@ -21,21 +21,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavKey
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.serialization.Serializable
 import li.mofanx.epso.META
 import li.mofanx.epso.MainActivity
@@ -44,7 +38,6 @@ import li.mofanx.epso.ui.component.PerfIcon
 import li.mofanx.epso.ui.component.PerfIconButton
 import li.mofanx.epso.ui.component.PerfTopAppBar
 import li.mofanx.epso.ui.component.SettingItem
-import li.mofanx.epso.ui.share.LocalDarkTheme
 import li.mofanx.epso.ui.share.LocalMainViewModel
 import li.mofanx.epso.ui.style.EmptyHeight
 import li.mofanx.epso.ui.style.itemPadding
@@ -87,7 +80,7 @@ fun AboutPage() {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                AnimatedLogoIcon(
+                AppLogoIcon(
                     modifier = Modifier
                         .clickable(
                             indication = null,
@@ -130,24 +123,13 @@ fun AboutPage() {
 }
 
 @Composable
-private fun AnimatedLogoIcon(
+private fun AppLogoIcon(
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = LocalDarkTheme.current
-    val colorRid = if (darkTheme) R.color.better_white else R.color.better_black
-    var atEnd by remember { mutableStateOf(false) }
-    val animation = AnimatedImageVector.animatedVectorResource(id = R.drawable.ic_anim_logo)
-    val painter = rememberAnimatedVectorPainter(animation, atEnd)
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            atEnd = !atEnd
-            delay(animation.totalDuration.toLong())
-        }
-    }
     Icon(
         modifier = modifier,
-        painter = painter,
+        painter = painterResource(R.drawable.ic_launcher_foreground),
         contentDescription = null,
-        tint = colorResource(colorRid),
+        tint = MaterialTheme.colorScheme.primary,
     )
 }
