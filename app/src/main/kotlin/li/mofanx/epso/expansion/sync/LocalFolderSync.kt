@@ -30,8 +30,11 @@ class LocalFolderSync(private val config: SyncConfig) : SyncManager {
     override suspend fun push(localDir: File): SyncResult = withContext(Dispatchers.IO) {
         runCatching {
             ensureRemoteDir()
-            val pushed = localYamls(localDir).count { localFile ->
-                val remoteFile = remoteDir.resolve(localFile.name)
+            // 递归遍历整个工作区（含 packages/ 子目录）
+            val pushed = localDir.walkTopDown().filter { it.isFile }.count { localFile ->
+                val relative = localFile.relativeTo(localDir).path
+                val remoteFile = remoteDir.resolve(relative)
+                remoteFile.parentFile?.mkdirs()
                 copyIfNewer(src = localFile, dst = remoteFile)
             }
             LogUtils.d(TAG, "Pushed $pushed files to ${remoteDir.absolutePath}")
@@ -44,8 +47,11 @@ class LocalFolderSync(private val config: SyncConfig) : SyncManager {
             ensureRemoteDir()
             var pulled = 0
             var conflicts = 0
-            remoteYamls().forEach { remoteFile ->
-                val localFile = localDir.resolve(remoteFile.name)
+            // 递归遍历远端目录（含 packages/ 子目录）
+            remoteDir.walkTopDown().filter { it.isFile }.forEach { remoteFile ->
+                val relative = remoteFile.relativeTo(remoteDir).path
+                val localFile = localDir.resolve(relative)
+                localFile.parentFile?.mkdirs()
                 if (!localFile.exists()) {
                     remoteFile.copyTo(localFile)
                     pulled++
@@ -59,9 +65,10 @@ class LocalFolderSync(private val config: SyncConfig) : SyncManager {
                         }
                         ConflictStrategy.KeepBoth -> {
                             if (remoteFile.lastModified() > localFile.lastModified()) {
-                                // 保留本地为 .conflict
+                                // 追加时间戳避免同名冲突文件互相覆盖
+                                val ts = System.currentTimeMillis()
                                 localFile.renameTo(
-                                    localDir.resolve("${localFile.nameWithoutExtension}.conflict.yml")
+                                    localDir.resolve("${localFile.nameWithoutExtension}.conflict.$ts.yml")
                                 )
                                 remoteFile.copyTo(localFile, overwrite = true)
                                 pulled++
@@ -96,14 +103,6 @@ class LocalFolderSync(private val config: SyncConfig) : SyncManager {
     private fun ensureRemoteDir() {
         if (!remoteDir.exists()) remoteDir.mkdirs()
     }
-
-    private fun localYamls(dir: File): List<File> =
-        dir.listFiles { f -> f.isFile && (f.extension == "yml" || f.extension == "yaml") }
-            ?.toList() ?: emptyList()
-
-    private fun remoteYamls(): List<File> =
-        remoteDir.listFiles { f -> f.isFile && (f.extension == "yml" || f.extension == "yaml") }
-            ?.toList() ?: emptyList()
 
     /**
      * 若 src 比 dst 新（或 dst 不存在），复制并返回 true
