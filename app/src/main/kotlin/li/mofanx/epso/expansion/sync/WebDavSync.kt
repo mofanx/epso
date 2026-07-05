@@ -57,8 +57,10 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
         runCatching {
             ensureRemoteDir()
             var pushed = 0
-            for (file in localYamls(localDir)) {
-                val url = "$matchesUrl/${file.name}"
+            // 递归遍历整个工作区（含 packages/ 子目录）
+            for (file in localDir.walkTopDown().filter { it.isFile }) {
+                val relative = file.relativeTo(localDir).path
+                val url = "$matchesUrl/$relative"
                 val resp = client.put(url) {
                     if (authHeader.isNotEmpty()) header("Authorization", authHeader)
                     contentType(ContentType.Text.Plain)
@@ -67,7 +69,7 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
                 if (resp.status.isSuccess() || resp.status == HttpStatusCode.Created || resp.status == HttpStatusCode.NoContent) {
                     pushed++
                 } else {
-                    LogUtils.e(TAG, "Push failed for ${file.name}: ${resp.status}")
+                    LogUtils.e(TAG, "Push failed for $relative: ${resp.status}")
                 }
             }
             SyncResult.Success(pushed = pushed)
@@ -79,14 +81,15 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
             val remoteFiles = listRemoteFiles()
             var pulled = 0
             var conflicts = 0
-            for (name in remoteFiles) {
-                val resp = client.get("$matchesUrl/$name") {
+            for (path in remoteFiles) {
+                val resp = client.get("$matchesUrl/$path") {
                     if (authHeader.isNotEmpty()) header("Authorization", authHeader)
                 }
                 if (!resp.status.isSuccess()) continue
 
                 val remoteBytes = resp.bodyAsBytes()
-                val localFile = localDir.resolve(name)
+                val localFile = localDir.resolve(path)
+                localFile.parentFile?.mkdirs()
                 val remoteModified = resp.headers["Last-Modified"]?.let { parseHttpDate(it) } ?: 0L
 
                 if (!localFile.exists()) {
@@ -101,7 +104,8 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
                         }
                         ConflictStrategy.KeepBoth -> {
                             if (remoteModified > localFile.lastModified()) {
-                                localFile.renameTo(localDir.resolve("${localFile.nameWithoutExtension}.conflict.yml"))
+                                val ts = System.currentTimeMillis()
+                                localFile.renameTo(localDir.resolve("${localFile.nameWithoutExtension}.conflict.$ts.yml"))
                                 localFile.writeBytes(remoteBytes); pulled++; conflicts++
                             }
                         }
@@ -144,18 +148,24 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
             setBody(body)
         }
         val text = resp.bodyAsText()
+        // 保留完整相对路径（含子目录），去掉 URL 前缀和查询参数
+        val basePath = matchesUrl.substringAfterLast('/')
         Regex("""href>([^<]*\.ya?ml)<""", RegexOption.IGNORE_CASE)
             .findAll(text)
-            .map { it.groupValues[1].substringAfterLast('/') }
+            .map { it.groupValues[1] }
+            .map { href ->
+                // 解码 URL 编码，去掉前缀路径，保留 matches/ 之后的相对路径
+                java.net.URLDecoder.decode(href, "UTF-8")
+                    .substringAfter("$basePath/")
+                    .takeIf { it.isNotEmpty() } ?: href.substringAfterLast('/')
+            }
             .filter { it.endsWith(".yml") || it.endsWith(".yaml") }
+            .filter { it.isNotEmpty() }
             .toList()
     } catch (e: Exception) {
         LogUtils.e(TAG, "listRemoteFiles failed", e)
         emptyList()
     }
-
-    private fun localYamls(dir: File): List<File> =
-        dir.listFiles { f -> f.isFile && (f.extension == "yml" || f.extension == "yaml") }?.toList() ?: emptyList()
 
     private fun parseHttpDate(value: String): Long = try {
         java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US)

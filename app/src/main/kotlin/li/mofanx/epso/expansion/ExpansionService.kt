@@ -162,7 +162,10 @@ class ExpansionService : A11yService() {
 
             // 表单分支：启动 FormOverlayWindow，等待用户填写后再替换
             val resolvedMatchResult = if (match.isForm && !match.form.isNullOrEmpty()) {
-                val resolved = handleFormExpansion(match, matchResult) ?: return
+                val resolved = handleFormExpansion(match, matchResult) ?: run {
+                    _expansionState.value = ExpansionState.Idle
+                    return
+                }
                 resolved
             } else {
                 matchResult
