@@ -43,7 +43,7 @@ val topActivityFlow = MutableStateFlow(TopActivity())
 
 // 更新无障碍服务组件名称引用
 val a11yCn by lazy { 
-    ComponentName("li.mofanx.epso", "li.mofanx.epso.expansion.ExpansionService")
+    ComponentName(app.packageName, "com.google.android.accessibility.selecttospeak.SelectToSpeakService")
 }
 private var lastValidActivity: TopActivity = topActivityFlow.value
     set(value) {

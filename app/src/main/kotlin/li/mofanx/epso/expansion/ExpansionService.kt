@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 规则热更新：订阅 MatchStore.matchDict，无需重启服务。
  */
-class ExpansionService : A11yService() {
+open class ExpansionService : A11yService() {
 
     companion object {
         private const val TAG = "ExpansionService"
@@ -83,10 +83,15 @@ class ExpansionService : A11yService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         super.onAccessibilityEvent(event)
-        if (event == null || !event.isUseful()) return
+        if (event == null) return
+        // TYPE_VIEW_TEXT_CHANGED 不在 isUseful() 的 interestedEvents 中，
+        // 需要单独处理，否则文本变化事件全部被过滤掉
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            if (event.packageName == null || event.className == null) return
             handleTextChanged(event)
+            return
         }
+        if (!event.isUseful()) return
     }
 
     // ──────────────────────────────────────────────────────────────
