@@ -117,6 +117,10 @@
             android:exported="false" />
 
         <service
+            android:name=".expansion.SearchOverlayWindow"
+            android:exported="false" />
+
+        <service
             android:name=".service.ScreenshotService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />

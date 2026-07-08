@@ -145,7 +145,7 @@ abstract class OverlayWindowService(
     abstract fun ComposeContent()
 
     @Composable
-    fun ClosableTitle(title: String) {
+    fun ClosableTitle(title: String, onClose: (() -> Unit)? = null) {
         Row(
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -156,7 +156,7 @@ abstract class OverlayWindowService(
                 modifier = Modifier
                     .clip(MaterialTheme.shapes.extraSmall)
                     .clickable(onClick = throttle {
-                        stopSelf()
+                        if (onClose != null) onClose() else stopSelf()
                     })
                     .iconTextSize()
             )

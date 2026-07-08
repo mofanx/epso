@@ -19,6 +19,8 @@ data class SettingsStore(
     val expansionWorkspacePath: String = "",
     /** 防抖延迟（毫秒），输入停止后等待此时间再触发匹配 */
     val expansionDebounceMs: Long = 300L,
+    /** 快速搜索触发词，输入后弹出悬浮搜索窗（空 = 禁用） */
+    val searchTrigger: String = ":s",
 
     // 同步配置
     /** 同步方式：None / LocalFolder / WebDav */

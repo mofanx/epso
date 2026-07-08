@@ -2,17 +2,24 @@ package li.mofanx.epso.ui.home
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -52,6 +59,37 @@ fun useSettingsPage(): ScaffoldExt {
         }) { contentPadding ->
         val store by storeFlow.collectAsState()
 
+        // 搜索触发词编辑对话框
+        var showSearchTriggerDlg by remember { mutableStateOf(false) }
+        if (showSearchTriggerDlg) {
+            var value by remember { mutableStateOf(store.searchTrigger) }
+            AlertDialog(
+                title = { Text(text = "快速搜索触发词") },
+                text = {
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { value = it },
+                        placeholder = { Text(text = "留空可禁用，默认 :s") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text("在任意输入框输入此触发词后弹出搜索悬浮窗") },
+                    )
+                },
+                onDismissRequest = { showSearchTriggerDlg = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showSearchTriggerDlg = false
+                        if (value != store.searchTrigger) {
+                            storeFlow.value = store.copy(searchTrigger = value.trim())
+                        }
+                    }) { Text("确认") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSearchTriggerDlg = false }) { Text("取消") }
+                },
+            )
+        }
+
         Column(
             modifier = Modifier
                 .verticalScroll(scrollState)
@@ -65,6 +103,12 @@ fun useSettingsPage(): ScaffoldExt {
                 onCheckedChange = {
                     storeFlow.value = store.copy(enableDynamicColor = it)
                 }
+            )
+
+            SettingItem(
+                title = "快速搜索触发词",
+                subtitle = store.searchTrigger.ifEmpty { "已禁用" },
+                onClick = throttle { showSearchTriggerDlg = true },
             )
 
             SettingItem(
