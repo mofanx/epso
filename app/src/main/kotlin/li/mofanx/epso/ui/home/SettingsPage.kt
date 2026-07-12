@@ -22,7 +22,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import li.mofanx.epso.R
 import li.mofanx.epso.store.storeFlow
 import li.mofanx.epso.ui.AboutRoute
 import li.mofanx.epso.ui.AdvancedRoute
@@ -90,6 +92,37 @@ fun useSettingsPage(): ScaffoldExt {
             )
         }
 
+        // 默认触发前缀编辑对话框
+        var showTriggerPrefixDlg by remember { mutableStateOf(false) }
+        if (showTriggerPrefixDlg) {
+            var value by remember { mutableStateOf(store.triggerPrefix) }
+            AlertDialog(
+                title = { Text(text = stringResource(R.string.settings_trigger_prefix)) },
+                text = {
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { value = it },
+                        placeholder = { Text(text = stringResource(R.string.settings_trigger_prefix_hint)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text(stringResource(R.string.settings_trigger_prefix_description)) },
+                    )
+                },
+                onDismissRequest = { showTriggerPrefixDlg = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showTriggerPrefixDlg = false
+                        if (value != store.triggerPrefix) {
+                            storeFlow.value = store.copy(triggerPrefix = value.trim())
+                        }
+                    }) { Text("确认") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showTriggerPrefixDlg = false }) { Text("取消") }
+                },
+            )
+        }
+
         Column(
             modifier = Modifier
                 .verticalScroll(scrollState)
@@ -106,9 +139,15 @@ fun useSettingsPage(): ScaffoldExt {
             )
 
             SettingItem(
-                title = "快速搜索触发词",
-                subtitle = store.searchTrigger.ifEmpty { "已禁用" },
+                title = stringResource(R.string.settings_search_trigger),
+                subtitle = store.searchTrigger.ifEmpty { stringResource(R.string.settings_search_trigger_disabled) },
                 onClick = throttle { showSearchTriggerDlg = true },
+            )
+
+            SettingItem(
+                title = stringResource(R.string.settings_trigger_prefix),
+                subtitle = store.triggerPrefix.ifEmpty { "无" },
+                onClick = throttle { showTriggerPrefixDlg = true },
             )
 
             SettingItem(

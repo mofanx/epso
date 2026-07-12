@@ -29,8 +29,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +82,7 @@ fun FilesPage() {
     val workspaceDir = MatchStore.getWorkspaceDir()
 
     var showCreateDlg by remember { mutableStateOf(false) }
+    var directoryVersion by remember { mutableStateOf(0) }
 
     // 导入：选择 YAML 文件 → 复制到工作区
     fun importYaml() {
@@ -135,12 +138,19 @@ fun FilesPage() {
     }
 
     if (showCreateDlg) {
-        CreateFileDlg(
+        CreateItemDlg(
             onDismiss = { showCreateDlg = false },
-            onCreate = { name ->
+            onCreate = { name, isFolder ->
                 showCreateDlg = false
-                scope.launch(Dispatchers.IO) {
-                    MatchStore.createFile(name)
+                if (isFolder) {
+                    scope.launch(Dispatchers.IO) {
+                        File(workspaceDir, name).mkdirs()
+                        withContext(Dispatchers.Main) { directoryVersion++ }
+                    }
+                } else {
+                    scope.launch(Dispatchers.IO) {
+                        MatchStore.createFile(name)
+                    }
                 }
             },
         )
@@ -191,7 +201,17 @@ fun FilesPage() {
                 .padding(paddingValues)
                 .fillMaxSize(),
         ) {
-            if (groups.isEmpty()) {
+            var collapsedDirs by rememberSaveable { mutableStateOf(setOf<String>()) }
+            val treeItems by produceState(
+                initialValue = emptyList<FileTreeItem>(),
+                groups, workspaceDir, collapsedDirs, directoryVersion,
+            ) {
+                value = withContext(Dispatchers.IO) {
+                    buildFileTreeItems(groups, workspaceDir, collapsedDirs)
+                }
+            }
+
+            if (treeItems.isEmpty()) {
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center,
@@ -224,22 +244,44 @@ fun FilesPage() {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(
-                        items = groups,
-                        key = { it.sourceFile },
-                    ) { group ->
-                        FileCard(
-                            group = group,
-                            onAddRule = {
-                                mainVm.navigatePage(
-                                    MatchEditorRoute(sourceFilePath = group.sourceFile)
-                                )
-                            },
-                            onDelete = { file ->
-                                scope.launch(Dispatchers.IO) {
-                                    MatchStore.deleteFile(file)
-                                }
-                            },
-                        )
+                        items = treeItems,
+                        key = { it.id },
+                    ) { item ->
+                        when (item) {
+                            is FileTreeItem.File -> FileCard(
+                                group = item.group,
+                                modifier = Modifier.padding(start = (item.depth * 16).dp),
+                                onClick = {
+                                    mainVm.navigatePage(
+                                        MatchListRoute(sourceFilePath = item.group.sourceFile)
+                                    )
+                                },
+                                onAddRule = {
+                                    mainVm.navigatePage(
+                                        MatchEditorRoute(sourceFilePath = item.group.sourceFile)
+                                    )
+                                },
+                                onDelete = { file ->
+                                    scope.launch(Dispatchers.IO) {
+                                        MatchStore.deleteFile(file)
+                                    }
+                                },
+                            )
+
+                            is FileTreeItem.Dir -> FolderCard(
+                                name = item.name,
+                                collapsed = item.collapsed,
+                                depth = item.depth,
+                                count = item.count,
+                                onClick = {
+                                    collapsedDirs = if (item.collapsed) {
+                                        collapsedDirs - item.path
+                                    } else {
+                                        collapsedDirs + item.path
+                                    }
+                                },
+                            )
+                        }
                     }
                     item { Spacer(Modifier.height(80.dp)) }
                 }
@@ -266,6 +308,8 @@ fun FilesPage() {
 @Composable
 private fun FileCard(
     group: MatchGroup,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
     onAddRule: () -> Unit,
     onDelete: (File) -> Unit,
 ) {
@@ -303,9 +347,10 @@ private fun FileCard(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = surfaceCardColors,
+        onClick = throttle { onClick() },
     ) {
         Row(
             modifier = Modifier
@@ -361,6 +406,162 @@ private fun FileCard(
     }
 }
 
+@Composable
+private fun FolderCard(
+    name: String,
+    collapsed: Boolean,
+    depth: Int,
+    count: Int,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = (depth * 16).dp),
+        shape = MaterialTheme.shapes.large,
+        colors = surfaceCardColors,
+        onClick = throttle { onClick() },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PerfIcon(
+                imageVector = PerfIcon.Folder,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = name,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            if (count > 0) {
+                Text(
+                    text = "($count 个文件)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+            }
+            PerfIcon(
+                imageVector = if (collapsed) PerfIcon.KeyboardArrowRight else PerfIcon.KeyboardArrowDown,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private sealed class FileTreeItem {
+    abstract val id: String
+    abstract val path: String
+    abstract val depth: Int
+
+    data class File(
+        override val id: String,
+        override val path: String,
+        val group: MatchGroup,
+        override val depth: Int,
+    ) : FileTreeItem()
+
+    data class Dir(
+        override val path: String,
+        val name: String,
+        val collapsed: Boolean,
+        val count: Int,
+        override val depth: Int,
+    ) : FileTreeItem() {
+        override val id: String get() = path
+    }
+}
+
+private data class TreeNode(
+    val path: String,
+    val name: String,
+    val group: MatchGroup? = null,
+    val children: MutableList<TreeNode> = mutableListOf(),
+) {
+    fun countFiles(): Int = if (group != null) 1 else children.sumOf { it.countFiles() }
+}
+
+private fun buildFileTreeItems(
+    groups: List<MatchGroup>,
+    workspaceDir: File,
+    collapsedDirs: Set<String>,
+): List<FileTreeItem> {
+    val groupMap = groups.associateBy { it.sourceFile }
+    val allEntries = workspaceDir.walkTopDown()
+        .filter { it != workspaceDir && (it.isDirectory || it.extension.equals("yml", ignoreCase = true) || it.extension.equals("yaml", ignoreCase = true)) }
+        .sortedBy { it.path }
+
+    val root = TreeNode(path = "", name = "")
+    for (entry in allEntries) {
+        val relative = runCatching { entry.toRelativeString(workspaceDir) }
+            .getOrDefault(entry.name)
+            .trim(File.separatorChar, '/')
+            .ifEmpty { entry.name }
+        val segments = relative.split(File.separatorChar, '/').filter { it.isNotEmpty() }
+        if (segments.isEmpty()) continue
+
+        val group = if (entry.isDirectory) {
+            null
+        } else {
+            groupMap[entry.absolutePath] ?: MatchGroup().apply { sourceFile = entry.absolutePath }
+        }
+
+        var current = root
+        val pathParts = mutableListOf<String>()
+        for ((index, segment) in segments.withIndex()) {
+            pathParts.add(segment)
+            val path = pathParts.joinToString("/")
+            val isLast = index == segments.lastIndex
+            val existing = current.children.find { it.path == path }
+            if (existing != null) {
+                current = existing
+                if (isLast && group != null) {
+                    // YAML file exists in a directory that was already created as a dir node; replace it with the file node
+                    val fileNode = TreeNode(path = path, name = segment, group = group)
+                    current.children[current.children.indexOf(existing)] = fileNode
+                    current = fileNode
+                }
+            } else if (isLast) {
+                val node = TreeNode(path = path, name = segment, group = group)
+                current.children.add(node)
+                current = node
+            } else {
+                val node = TreeNode(path = path, name = segment)
+                current.children.add(node)
+                current = node
+            }
+        }
+    }
+    val result = mutableListOf<FileTreeItem>()
+    flattenTree(root, collapsedDirs, result)
+    return result
+}
+
+private fun flattenTree(
+    node: TreeNode,
+    collapsedDirs: Set<String>,
+    result: MutableList<FileTreeItem>,
+) {
+    for (child in node.children) {
+        if (child.group != null) {
+            result.add(FileTreeItem.File(child.group.sourceFile, child.path, child.group, child.path.count { it == '/' }))
+        } else {
+            if (child.path.isNotEmpty()) {
+                result.add(FileTreeItem.Dir(child.path, child.name, child.path in collapsedDirs, child.countFiles(), child.path.count { it == '/' }))
+            }
+            if (child.path !in collapsedDirs) {
+                flattenTree(child, collapsedDirs, result)
+            }
+        }
+    }
+}
+
 // ──────────────────────────────────────────────────────────────
 // 工具函数
 // ──────────────────────────────────────────────────────────────
@@ -381,31 +582,57 @@ private fun zipWorkspaceDir(srcDir: File, destZip: File) {
 }
 
 @Composable
-private fun CreateFileDlg(
+private fun CreateItemDlg(
     onDismiss: () -> Unit,
-    onCreate: (String) -> Unit,
+    onCreate: (String, Boolean) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
-    val isValid = name.matches(Regex("[a-zA-Z0-9_\\-]+"))
+    var isFolder by remember { mutableStateOf(false) }
+    val isValid = name.matches(Regex("^[a-zA-Z0-9_\\-]+(/[a-zA-Z0-9_\\-]+)*$"))
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("新建规则文件") },
+        title = { Text("新建") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    TextButton(
+                        onClick = { isFolder = false },
+                        colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                            contentColor = if (!isFolder) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    ) { Text("文件") }
+                    TextButton(
+                        onClick = { isFolder = true },
+                        colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                            contentColor = if (isFolder) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    ) { Text("文件夹") }
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.trim() },
-                    label = { Text("文件名（不含扩展名）") },
-                    placeholder = { Text("如：email 或 shortcuts") },
+                    label = { Text("名称") },
+                    placeholder = {
+                        if (isFolder) {
+                            Text("如：folder 或 sub/folder")
+                        } else {
+                            Text("如：email 或 sub/email")
+                        }
+                    },
                     singleLine = true,
                     isError = name.isNotEmpty() && !isValid,
                     supportingText = if (name.isNotEmpty() && !isValid) {
-                        { Text("只允许字母、数字、下划线和连字符") }
-                    } else null,
+                        { Text("只允许字母、数字、下划线、连字符和 '/' 子目录分隔") }
+                    } else {
+                        { Text("允许使用 '/' 表示子目录") }
+                    },
                 )
                 Text(
-                    text = "文件将保存为 $name.yml",
+                    text = if (isFolder) "文件夹将创建为 $name/" else "文件将保存为 $name.yml",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -413,7 +640,7 @@ private fun CreateFileDlg(
         },
         confirmButton = {
             TextButton(
-                onClick = { onCreate(name) },
+                onClick = { onCreate(name, isFolder) },
                 enabled = isValid,
             ) { Text("创建") }
         },

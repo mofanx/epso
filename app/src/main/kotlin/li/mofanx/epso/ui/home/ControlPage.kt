@@ -12,11 +12,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -41,16 +41,14 @@ import li.mofanx.epso.MainActivity
 import li.mofanx.epso.R
 import li.mofanx.epso.expansion.ExpansionService
 import li.mofanx.epso.expansion.ExpansionTestPage
+import li.mofanx.epso.expansion.MatchStore
 import li.mofanx.epso.ui.expansion.FilesRoute
 import li.mofanx.epso.ui.expansion.GlobalVarsRoute
 import li.mofanx.epso.ui.expansion.MatchListRoute
 import li.mofanx.epso.ui.expansion.PackageStoreRoute
-import li.mofanx.epso.permission.appOpsRestrictedFlow
 import li.mofanx.epso.permission.writeSecureSettingsState
 import li.mofanx.epso.service.StatusService
 import li.mofanx.epso.service.switchAutomatorService
-import li.mofanx.epso.shizuku.shizukuContextFlow
-import li.mofanx.epso.shizuku.uiAutomationFlow
 import li.mofanx.epso.store.storeFlow
 import li.mofanx.epso.ui.AuthA11yRoute
 import li.mofanx.epso.ui.component.PerfIcon
@@ -83,38 +81,99 @@ fun useExpansionPage(): ScaffoldExt {
         topBar = {
             PerfTopAppBar(
                 scrollBehavior = scrollBehavior,
-                title = { Text("文本扩展") },
-                actions = {
-                    PerfIconButton(
-                        imageVector = PerfIcon.RocketLaunch,
-                        contentDescription = "包商店",
-                        onClickLabel = "前往 espanso Hub 包商店",
-                        onClick = throttle { mainVm.navigatePage(PackageStoreRoute) },
-                    )
-                    PerfIconButton(
-                        imageVector = PerfIcon.TextFields,
-                        contentDescription = "全局变量",
-                        onClickLabel = "前往全局变量管理页面",
-                        onClick = throttle { mainVm.navigatePage(GlobalVarsRoute) },
-                    )
-                    PerfIconButton(
-                        imageVector = PerfIcon.Layers,
-                        contentDescription = "文件管理",
-                        onClickLabel = "前往文件管理页面",
-                        onClick = throttle { mainVm.navigatePage(FilesRoute) },
-                    )
-                    PerfIconButton(
-                        imageVector = PerfIcon.FormatListBulleted,
-                        contentDescription = "规则管理",
-                        onClickLabel = "前往规则管理页面",
-                        onClick = throttle { mainVm.navigatePage(MatchListRoute) },
-                    )
-                },
+                title = { Text(stringResource(R.string.expansion_title)) },
             )
         },
     ) { contentPadding ->
-        Box(modifier = Modifier.padding(contentPadding)) {
+        Column(
+            modifier = Modifier
+                .padding(contentPadding)
+                .padding(horizontal = itemHorizontalPadding),
+            verticalArrangement = Arrangement.spacedBy(itemHorizontalPadding / 2),
+        ) {
+            EntryRow(
+                onPackageStore = { mainVm.navigatePage(PackageStoreRoute) },
+                onGlobalVars = { mainVm.navigatePage(GlobalVarsRoute) },
+                onFiles = { mainVm.navigatePage(FilesRoute) },
+                onRules = { mainVm.navigatePage(MatchListRoute()) },
+                modifier = Modifier.padding(top = itemVerticalPadding),
+            )
             ExpansionTestPage()
+        }
+    }
+}
+
+private data class ExpansionEntry(
+    val icon: ImageVector,
+    val label: String,
+    val route: () -> Unit,
+)
+
+@Composable
+private fun EntryRow(
+    onPackageStore: () -> Unit,
+    onGlobalVars: () -> Unit,
+    onFiles: () -> Unit,
+    onRules: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val entries = listOf(
+        ExpansionEntry(
+            icon = PerfIcon.RocketLaunch,
+            label = stringResource(R.string.expansion_entry_package_store),
+            route = onPackageStore,
+        ),
+        ExpansionEntry(
+            icon = PerfIcon.TextFields,
+            label = stringResource(R.string.expansion_entry_global_vars),
+            route = onGlobalVars,
+        ),
+        ExpansionEntry(
+            icon = PerfIcon.Layers,
+            label = stringResource(R.string.expansion_entry_files),
+            route = onFiles,
+        ),
+        ExpansionEntry(
+            icon = PerfIcon.FormatListBulleted,
+            label = stringResource(R.string.expansion_entry_rules),
+            route = onRules,
+        ),
+    )
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        entries.forEach { EntryCard(modifier = Modifier.weight(1f), entry = it) }
+    }
+}
+
+@Composable
+private fun EntryCard(
+    entry: ExpansionEntry,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.large,
+        colors = surfaceCardColors,
+        onClick = throttle { entry.route() },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            PerfIcon(imageVector = entry.icon)
+            Text(
+                text = entry.label,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -126,6 +185,13 @@ fun useControlPage(): ScaffoldExt {
     val vm = viewModel<HomeVm>()
     val scrollKey = rememberSaveable { mutableIntStateOf(0) }
     val (scrollBehavior, scrollState) = useScrollBehaviorState(scrollKey)
+    val status = resolveHomeOverallStatus()
+    val serviceState = resolveHomeServiceState()
+    val quickStart = resolveQuickStartProgress()
+    val store by storeFlow.collectAsState()
+    val manageRunning by StatusService.isRunning.collectAsState()
+    val writeSecureSettings by writeSecureSettingsState.stateFlow.collectAsState()
+
     LaunchedEffect(null) {
         mainVm.resetPageScrollEvent.collect {
             if (it == BottomNavItem.Home) {
@@ -133,82 +199,80 @@ fun useControlPage(): ScaffoldExt {
             }
         }
     }
+
+    val secondaryAction = when (status) {
+        is HomeOverallStatus.Available -> {
+            { mainVm.navigatePage(FilesRoute) }
+        }
+
+        is HomeOverallStatus.Restricted -> null
+        else -> {
+            { mainVm.handleClickTab(BottomNavItem.Expansion) }
+        }
+    }
+
     return ScaffoldExt(
         navItem = BottomNavItem.Home,
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            PerfTopAppBar(scrollBehavior = scrollBehavior, title = {
-                Text(
-                    text = stringResource(R.string.app_name)
-                )
-            }, actions = {
-                PerfIconButton(
-                    imageVector = PerfIcon.RocketLaunch,
-                    onClickLabel = "前往无障碍授权页面",
-                    contentDescription = "无障碍",
-                    onClick = throttle {
-                        mainVm.navigatePage(AuthA11yRoute)
-                    },
-                )
-            })
-        }) { contentPadding ->
-        val store by storeFlow.collectAsState()
-
-        val a11yRunning by ExpansionService.isRunning.collectAsState()
-        val manageRunning by StatusService.isRunning.collectAsState()
-        val writeSecureSettings by writeSecureSettingsState.stateFlow.collectAsState()
-
+            PerfTopAppBar(
+                scrollBehavior = scrollBehavior,
+                title = {
+                    Text(text = stringResource(R.string.home_title))
+                },
+                actions = {
+                    PerfIconButton(
+                        imageVector = PerfIcon.RocketLaunch,
+                        onClickLabel = stringResource(R.string.auth_a11y_title),
+                        contentDescription = stringResource(R.string.auth_a11y_title),
+                        onClick = throttle {
+                            mainVm.navigatePage(AuthA11yRoute)
+                        },
+                    )
+                },
+            )
+        },
+    ) { contentPadding ->
         Column(
             modifier = Modifier
                 .verticalScroll(scrollState)
                 .padding(contentPadding)
                 .padding(horizontal = itemHorizontalPadding),
-            verticalArrangement = Arrangement.spacedBy(itemHorizontalPadding / 2)
+            verticalArrangement = Arrangement.spacedBy(itemHorizontalPadding / 2),
         ) {
-            if (appOpsRestrictedFlow.collectAsState().value) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics(mergeDescendants = true) {
-                            this.onClick(label = "前往解除限制页面", action = null)
-                        },
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    onClick = throttle {
-                        mainVm.navigatePage(AuthA11yRoute)
-                    },
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(itemVerticalPadding),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        PerfIcon(imageVector = PerfIcon.WarningAmber)
-                        Text(
-                            modifier = Modifier.weight(1f),
-                            text = "检测到权限受限制，请前往解除",
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        PerfIcon(imageVector = PerfIcon.KeyboardArrowRight)
+            HomeHeroCard(
+                status = status,
+                onPrimaryAction = {
+                    when (status) {
+                        is HomeOverallStatus.Available -> {
+                            if (MatchStore.matchCount == 0) {
+                                mainVm.navigatePage(MatchListRoute())
+                            } else {
+                                mainVm.handleClickTab(BottomNavItem.Expansion)
+                            }
+                        }
+
+                        is HomeOverallStatus.Disabled -> switchAutomatorService()
+                        else -> mainVm.navigatePage(AuthA11yRoute)
                     }
-                }
+                },
+                onSecondaryAction = secondaryAction,
+            )
+
+            QuickStartProgressCard(progress = quickStart)
+
+            val a11ySubtitle = when {
+                serviceState.a11yRunning -> stringResource(R.string.home_service_a11y_running)
+                serviceState.a11yEnabled -> stringResource(R.string.home_service_a11y_fault)
+                serviceState.writeSecureSettings -> stringResource(R.string.home_service_a11y_off)
+                else -> stringResource(R.string.home_service_a11y_unauthorized)
             }
 
             PageSwitchItemCard(
                 imageVector = PerfIcon.Memory,
-                title = "无障碍服务",
-                subtitle = if (a11yRunning) {
-                    "无障碍正在运行"
-                } else if (mainVm.a11yServiceEnabledFlow.collectAsState().value) {
-                    "无障碍发生故障"
-                } else if (writeSecureSettings) {
-                    "无障碍已关闭"
-                } else {
-                    "无障碍未授权"
-                },
-                checked = a11yRunning,
+                title = stringResource(R.string.home_service_a11y),
+                subtitle = a11ySubtitle,
+                checked = serviceState.a11yRunning,
                 onCheckedChange = { newEnabled ->
                     if (newEnabled && !writeSecureSettingsState.value) {
                         mainVm.navigatePage(AuthA11yRoute)
@@ -220,8 +284,8 @@ fun useControlPage(): ScaffoldExt {
 
             PageSwitchItemCard(
                 imageVector = PerfIcon.Notifications,
-                title = "常驻通知",
-                subtitle = "显示运行状态",
+                title = stringResource(R.string.home_service_notification),
+                subtitle = stringResource(R.string.home_service_notification_subtitle),
                 checked = manageRunning && store.enableStatusService,
                 onCheckedChange = {
                     if (it) {
@@ -250,11 +314,12 @@ private fun PageSwitchItemCard(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val onClick = throttle { onCheckedChange(!checked) }
+    val clickLabel = stringResource(R.string.action_toggle, title)
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
-                this.onClick(label = "切换$title", action = null)
+                this.onClick(label = clickLabel, action = null)
             },
         shape = MaterialTheme.shapes.large,
         colors = surfaceCardColors,

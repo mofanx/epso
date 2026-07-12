@@ -29,6 +29,8 @@ data class MatchGroup(
     @SerialName("global_vars")
     val globalVars: List<Var> = emptyList(),
     val imports: List<String> = emptyList(),
+    /** 文件级默认触发前缀，null 表示继承全局设置 */
+    val prefix: String? = null,
 ) {
     /**
      * 运行时记录来源文件路径，不序列化到 YAML

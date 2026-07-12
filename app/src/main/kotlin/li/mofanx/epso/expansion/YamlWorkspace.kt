@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import li.mofanx.epso.util.LogUtils
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -49,8 +50,10 @@ class YamlWorkspace(val dir: File) {
     /**
      * 递归加载工作区所有 YAML，展开 imports，返回合并后的规则字典和全局变量。
      * 触发词冲突时，后加载的文件覆盖先加载的（与 espanso 行为一致）。
+     *
+     * @param defaultPrefix 全局默认触发前缀，用于拆分老数据 trigger 中拼写的前缀
      */
-    suspend fun loadAll(): Pair<Map<String, Match>, List<Var>> = withContext(Dispatchers.IO) {
+    suspend fun loadAll(defaultPrefix: String = ""): Pair<Map<String, Match>, List<Var>> = withContext(Dispatchers.IO) {
         val matchDict = LinkedHashMap<String, Match>()
         val globalVars = mutableListOf<Var>()
         val visited = HashSet<String>()
@@ -59,26 +62,34 @@ class YamlWorkspace(val dir: File) {
         val rootFiles = listYamlFiles(dir)
 
         for (file in rootFiles) {
-            loadRecursive(file, matchDict, globalVars, visited, depth = 0)
+            loadRecursive(file, matchDict, globalVars, visited, defaultPrefix, depth = 0)
         }
 
         matchDict to globalVars
     }
 
     /**
-     * 列出工作区根目录下所有直接 .yml/.yaml 文件（不含子目录）。
-     * 子目录用于 Hub 包，由 imports 机制引用。
+     * 列出工作区根目录下所有直接 .yml/.yaml 文件。
      */
-    fun listFiles(): List<File> {
-        dir.autoMkdir()
-        return listYamlFiles(dir)
-    }
+    fun listRootFiles(): List<File> = listYamlFiles(dir)
+
+    /**
+     * 递归列出工作区所有 .yml/.yaml 文件（含子目录），用于文件树 UI。
+     */
+    fun listFiles(): List<File> = listAllYamlFiles(dir)
+
+    /**
+     * 列出工作区根目录下所有直接 .yml/.yaml 文件（兼容旧调用）。
+     */
+    fun listRootFilesLegacy(): List<File> = listYamlFiles(dir)
 
     /**
      * 读取单个 YAML 文件 → MatchGroup
+     *
+     * @param defaultPrefix 全局默认触发前缀，用于拆分老数据 trigger 中拼写的前缀
      */
-    suspend fun readFile(file: File): MatchGroup = withContext(Dispatchers.IO) {
-        parseYaml(file.readText(), file.absolutePath)
+    suspend fun readFile(file: File, defaultPrefix: String = ""): MatchGroup = withContext(Dispatchers.IO) {
+        resolveEffectivePrefix(parseYaml(file.readText(), file.absolutePath), defaultPrefix)
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -100,8 +111,16 @@ class YamlWorkspace(val dir: File) {
      */
     suspend fun createFile(name: String): File = withContext(Dispatchers.IO) {
         dir.autoMkdir()
-        val safeName = name.replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
-        val file = dir.resolve("$safeName.yml")
+        val segments = name.split('/').filter { it.isNotEmpty() }
+        val safeSegments = segments.map { it.replace(Regex("[^a-zA-Z0-9_\\-]"), "_") }
+        val file = if (safeSegments.isEmpty()) {
+            dir.resolve("untitled.yml")
+        } else {
+            val parent = safeSegments.dropLast(1).fold(dir) { acc, segment ->
+                acc.resolve(segment).autoMkdir()
+            }
+            parent.resolve("${safeSegments.last()}.yml")
+        }
         if (!file.exists()) {
             writeFile(file, MatchGroup())
         }
@@ -153,6 +172,7 @@ class YamlWorkspace(val dir: File) {
         dict: LinkedHashMap<String, Match>,
         vars: MutableList<Var>,
         visited: HashSet<String>,
+        defaultPrefix: String,
         depth: Int,
     ) {
         if (depth > MAX_IMPORT_DEPTH) {
@@ -165,7 +185,7 @@ class YamlWorkspace(val dir: File) {
         if (!file.exists() || !file.isFile) return
 
         val group = withContext(Dispatchers.IO) {
-            parseYaml(file.readText(), file.absolutePath)
+            resolveEffectivePrefix(parseYaml(file.readText(), file.absolutePath), defaultPrefix)
         }
 
         // 合并全局变量（同名后者覆盖）
@@ -190,9 +210,31 @@ class YamlWorkspace(val dir: File) {
             val baseDir = file.parentFile ?: dir
             for (importPath in group.imports) {
                 val importFile = resolveImportPath(baseDir, importPath)
-                loadRecursive(importFile, dict, vars, visited, depth + 1)
+                loadRecursive(importFile, dict, vars, visited, defaultPrefix, depth + 1)
             }
         }
+    }
+
+    /**
+     * 计算每条 Match 的 effectivePrefix，并把已拼入 trigger 的老前缀剥离到 prefix 字段外。
+     */
+    private fun resolveEffectivePrefix(
+        group: MatchGroup,
+        defaultPrefix: String,
+    ): MatchGroup {
+        val groupPrefix = group.prefix ?: defaultPrefix
+        val resolved = group.matches.map { match ->
+            val effectivePrefix = match.prefix ?: groupPrefix
+            val (newTrigger, newTriggers) = if (match.prefix == null) {
+                match.trigger.removePrefix(effectivePrefix) to
+                    match.triggers.map { it.removePrefix(effectivePrefix) }
+            } else {
+                match.trigger to match.triggers
+            }
+            match.copy(trigger = newTrigger, triggers = newTriggers)
+                .apply { this.effectivePrefix = effectivePrefix }
+        }
+        return group.copy(matches = resolved).apply { sourceFile = group.sourceFile }
     }
 
     /**
@@ -213,20 +255,39 @@ class YamlWorkspace(val dir: File) {
             ?: emptyList()
     }
 
+    private fun listAllYamlFiles(directory: File): List<File> {
+        return directory
+            .walkTopDown()
+            .filter { it.isFile && (it.extension == "yml" || it.extension == "yaml") }
+            .sortedBy { it.path }
+            .toList()
+    }
+
     private fun writeAtomic(file: File, text: String) {
         file.parentFile?.mkdirs()
         val tmp = File("${file.absolutePath}.tmp")
         tmp.writeText(text, Charsets.UTF_8)
-        Files.move(
-            tmp.toPath(),
-            file.toPath(),
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.ATOMIC_MOVE,
-        )
+        try {
+            Files.move(
+                tmp.toPath(),
+                file.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+        } catch (e: UnsupportedOperationException) {
+            if (file.exists() && !file.delete()) throw IOException("无法替换 ${file.name}", e)
+            if (!tmp.renameTo(file)) throw IOException("无法写入 ${file.name}", e)
+        }
     }
 }
 
 private fun File.autoMkdir(): File {
     if (!exists()) mkdirs()
     return this
+}
+
+internal fun File.isValidWorkspace(): Boolean {
+    if (isFile) return false
+    if (!exists() && !mkdirs()) return false
+    return canWrite()
 }

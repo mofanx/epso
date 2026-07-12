@@ -68,11 +68,14 @@ import li.mofanx.epso.a11y.topActivityFlow
 import li.mofanx.epso.a11y.updateSystemDefaultAppId
 import li.mofanx.epso.a11y.updateTopActivity
 import li.mofanx.epso.permission.AuthDialog
+import li.mofanx.epso.permission.shizukuGrantedState
 import li.mofanx.epso.permission.updatePermissionState
 import li.mofanx.epso.service.A11yService
 import li.mofanx.epso.service.StatusService
 import li.mofanx.epso.shizuku.automationRegisteredExceptionFlow
+import li.mofanx.epso.shizuku.defaultShizukuContext
 import li.mofanx.epso.shizuku.shizukuContextFlow
+import li.mofanx.epso.shizuku.uiAutomationFlow
 import li.mofanx.epso.store.storeFlow
 import li.mofanx.epso.ui.AboutPage
 import li.mofanx.epso.ui.AboutRoute
@@ -113,7 +116,6 @@ import li.mofanx.epso.util.AndroidTarget
 import li.mofanx.epso.util.BarUtils
 import li.mofanx.epso.util.KeyboardUtils
 import li.mofanx.epso.util.LogUtils
-import li.mofanx.epso.util.appInfoMapFlow
 import li.mofanx.epso.util.componentName
 import li.mofanx.epso.util.copyText
 import li.mofanx.epso.util.fixSomeProblems
@@ -245,7 +247,7 @@ class MainActivity : ComponentActivity() {
                             entry<WebViewRoute> { WebViewPage(it) }
                             entry<ImagePreviewRoute> { ImagePreviewPage(it) }
                             entry<CrashReportRoute> { CrashReportPage() }
-                            entry<MatchListRoute> { MatchListPage() }
+                            entry<MatchListRoute> { MatchListPage(it) }
                             entry<MatchEditorRoute> { MatchEditorPage(it) }
                             entry<FilesRoute> { FilesPage() }
                             entry<GlobalVarsRoute> { GlobalVarsPage() }
@@ -347,7 +349,13 @@ fun syncFixState() {
         }
         syncStateMutex.withLock {
             updateSystemDefaultAppId()
-            shizukuContextFlow.value.grantSelf()
+            if (shizukuGrantedState.updateAndGet()) {
+                shizukuContextFlow.value.grantSelf()
+            } else {
+                shizukuContextFlow.value.destroy()
+                shizukuContextFlow.value = defaultShizukuContext
+                uiAutomationFlow.value?.shutdown(true)
+            }
             updatePermissionState()
         }
     }
@@ -358,8 +366,7 @@ private fun ShizukuErrorDialog(stateFlow: MutableStateFlow<Throwable?>) {
     val state = stateFlow.collectAsState().value
     if (state != null) {
         val errorText = remember { state.stackTraceToString() }
-        val appInfoCache = appInfoMapFlow.collectAsState().value
-        val installed = appInfoCache.contains(shizukuAppId)
+        val installed = app.getPkgInfo(shizukuAppId) != null
         AlertDialog(
             onDismissRequest = { stateFlow.value = null },
             title = { Text(text = "授权错误") },

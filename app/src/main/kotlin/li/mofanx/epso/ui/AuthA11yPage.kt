@@ -24,9 +24,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -39,11 +47,15 @@ import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.Serializable
 import li.mofanx.epso.META
+import li.mofanx.epso.R
 import li.mofanx.epso.permission.Manifest_permission_GET_APP_OPS_STATS
 import li.mofanx.epso.permission.writeSecureSettingsState
 import li.mofanx.epso.service.A11yService
 import li.mofanx.epso.shizuku.SafeAppOpsService
 import li.mofanx.epso.shizuku.shizukuUsedFlow
+import li.mofanx.epso.syncFixState
+import li.mofanx.epso.ui.common.feedback.BannerType
+import li.mofanx.epso.ui.common.feedback.StatusBanner
 import li.mofanx.epso.ui.component.AnimatedBooleanContent
 import li.mofanx.epso.ui.component.ManualAuthDialog
 import li.mofanx.epso.ui.component.PerfIcon
@@ -72,21 +84,80 @@ fun AuthA11yPage() {
     val showCopyDlg by vm.showCopyDlgFlow.collectAsState()
     val writeSecureSettings by writeSecureSettingsState.stateFlow.collectAsState()
     val a11yRunning by A11yService.isRunning.collectAsState()
+    var returnChecked by remember { mutableStateOf(false) }
+    var isFirstResume by remember { mutableStateOf(true) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (isFirstResume) {
+                    isFirstResume = false
+                } else {
+                    syncFixState()
+                    returnChecked = true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val statusTitle = when {
+        writeSecureSettings -> stringResource(R.string.auth_a11y_enhanced_granted)
+        a11yRunning -> stringResource(R.string.auth_a11y_basic_granted)
+        else -> stringResource(R.string.home_status_not_authorized)
+    }
+    val statusSubtitle = if (returnChecked) {
+        stringResource(R.string.auth_a11y_return_check)
+    } else {
+        null
+    }
+    val statusAction = if (!writeSecureSettings && !a11yRunning) {
+        stringResource(R.string.auth_a11y_basic_manual)
+    } else {
+        null
+    }
+    val statusType = if (writeSecureSettings || a11yRunning) {
+        BannerType.Success()
+    } else {
+        BannerType.Warning()
+    }
+
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
-    Scaffold(modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection), topBar = {
-        PerfTopAppBar(scrollBehavior = scrollBehavior, navigationIcon = {
-            PerfIconButton(
-                imageVector = PerfIcon.ArrowBack,
-                onClick = { mainVm.popPage() }
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            PerfTopAppBar(
+                scrollBehavior = scrollBehavior,
+                navigationIcon = {
+                    PerfIconButton(
+                        imageVector = PerfIcon.ArrowBack,
+                        onClick = { mainVm.popPage() }
+                    )
+                },
+                title = { Text(text = stringResource(R.string.auth_a11y_title)) },
             )
-        }, title = { Text(text = "无障碍授权") })
-    }) { contentPadding ->
+        },
+    ) { contentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
         ) {
+            StatusBanner(
+                modifier = Modifier.padding(horizontal = itemHorizontalPadding),
+                title = statusTitle,
+                subtitle = statusSubtitle,
+                actionLabel = statusAction,
+                onAction = if (statusAction != null) {
+                    throttle { openA11ySettings() }
+                } else {
+                    null
+                },
+                type = statusType,
+            )
             Card(
                 modifier = Modifier
                     .padding(horizontal = itemHorizontalPadding)
@@ -97,7 +168,7 @@ fun AuthA11yPage() {
                     modifier = Modifier
                         .padding(horizontal = cardHorizontalPadding)
                         .padding(start = 4.dp, top = 12.dp),
-                    text = "基础",
+                    text = stringResource(R.string.auth_a11y_basic_title),
                     style = MaterialTheme.typography.titleSmall
                 )
                 TextListItem(
@@ -106,8 +177,7 @@ fun AuthA11yPage() {
                         .padding(start = 8.dp, top = 4.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     list = listOf(
-                        "授予「无障碍权限」",
-                        "无障碍关闭后需重新授权"
+                        stringResource(R.string.auth_a11y_basic_summary),
                     ),
                 )
                 AnimatedBooleanContent(
@@ -117,7 +187,7 @@ fun AuthA11yPage() {
                             modifier = Modifier
                                 .padding(horizontal = cardHorizontalPadding)
                                 .padding(start = 8.dp, top = 4.dp),
-                            text = "已持有「无障碍权限」可继续使用",
+                            text = stringResource(R.string.auth_a11y_basic_granted),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     },
@@ -133,7 +203,7 @@ fun AuthA11yPage() {
                                 onClick = throttle { openA11ySettings() },
                             ) {
                                 Text(
-                                    text = "手动授权",
+                                    text = stringResource(R.string.auth_a11y_basic_manual),
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                             }
@@ -144,7 +214,7 @@ fun AuthA11yPage() {
                     modifier = Modifier
                         .padding(horizontal = cardHorizontalPadding)
                         .padding(start = 4.dp, top = 8.dp),
-                    text = "增强",
+                    text = stringResource(R.string.auth_a11y_enhanced_title),
                     style = MaterialTheme.typography.titleSmall,
                 )
                 TextListItem(
@@ -153,8 +223,7 @@ fun AuthA11yPage() {
                         .padding(start = 8.dp, top = 4.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     list = listOf(
-                        "授予「写入安全设置权限」",
-                        "应用可自行控制开关无障碍",
+                        stringResource(R.string.auth_a11y_enhanced_summary),
                     ),
                 )
                 AnimatedBooleanContent(
@@ -164,7 +233,7 @@ fun AuthA11yPage() {
                             modifier = Modifier
                                 .padding(horizontal = cardHorizontalPadding)
                                 .padding(start = 8.dp, top = 4.dp),
-                            text = "已持有「写入安全设置权限」 优先使用此项",
+                            text = stringResource(R.string.auth_a11y_enhanced_granted),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     },
@@ -177,7 +246,7 @@ fun AuthA11yPage() {
                             ShizukuAuthButton()
                             TextButton(onClick = { vm.showCopyDlgFlow.value = true }) {
                                 Text(
-                                    text = "命令授权",
+                                    text = stringResource(R.string.auth_a11y_command),
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                             }
@@ -189,7 +258,6 @@ fun AuthA11yPage() {
             Spacer(modifier = Modifier.height(EmptyHeight))
         }
     }
-
     ManualAuthDialog(
         commandText = epsoStartCommandText,
         show = showCopyDlg,
@@ -203,17 +271,18 @@ private fun ShizukuAuthButton(
 ) {
     val mainVm = LocalMainViewModel.current
     val vm = viewModel<AuthA11yVm>()
+    val grantedText = stringResource(R.string.auth_a11y_enhanced_granted)
     TextButton(
         modifier = modifier,
         onClick = throttle(vm.viewModelScope.launchAsFn(Dispatchers.IO) {
             mainVm.guardShizukuContext()
             if (writeSecureSettingsState.value) {
-                toast("授权成功")
+                toast(grantedText)
             }
         })
     ) {
         Text(
-            text = "Shizuku 授权",
+            text = stringResource(R.string.auth_a11y_shizuku),
             style = MaterialTheme.typography.bodyLarge,
         )
     }

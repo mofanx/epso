@@ -1,6 +1,275 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" debug_suffix="true">epso</string>
-    <string name="a11y_desc">文本扩展服务\n\n监听文本输入，根据用户自定义规则将触发词自动替换为预设文本，支持变量展开和多规则匹配</string>
-    <string name="http_server" debug_suffix="true">HTTP服务</string>
+    <string name="a11y_desc">Text expansion service\n\nListens to text input and automatically replaces trigger words with preset text, supporting variable expansion and multi-rule matching.</string>
+    <string name="http_server" debug_suffix="true">HTTP Server</string>
+
+    <!-- Common actions -->
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_add">Add</string>
+    <string name="action_create">Create</string>
+    <string name="action_import">Import</string>
+    <string name="action_export">Export</string>
+    <string name="action_search">Search</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_open">Open</string>
+    <string name="action_toggle">Toggle %1$s</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_learn_more">Learn more</string>
+
+    <!-- Home -->
+    <string name="home_title">Home</string>
+    <string name="home_overall_status">Overall status</string>
+    <string name="home_status_available">Ready</string>
+    <string name="home_status_not_authorized">Not authorized</string>
+    <string name="home_status_disabled">Disabled</string>
+    <string name="home_status_fault">Fault</string>
+    <string name="home_status_reason_available">Text expansion service is running.</string>
+    <string name="home_status_reason_not_authorized">Accessibility permission is required.</string>
+    <string name="home_status_reason_disabled">Accessibility service is turned off.</string>
+    <string name="home_status_reason_fault">Accessibility is enabled but the service is not running.</string>
+    <string name="home_action_authorize">Authorize</string>
+    <string name="home_action_open">Enable</string>
+    <string name="home_action_fix">Fix</string>
+    <string name="home_action_test">Test</string>
+    <string name="home_action_create_rule">Create rule</string>
+    <string name="home_action_import_rule">Import or install rule</string>
+    <string name="home_quick_start_title">Quick start</string>
+    <string name="home_quick_start_step_authorize">Authorize</string>
+    <string name="home_quick_start_step_create">Create or import a rule</string>
+    <string name="home_quick_start_step_verify">Verify</string>
+    <string name="home_service_a11y">Accessibility service</string>
+    <string name="home_service_a11y_running">Running</string>
+    <string name="home_service_a11y_fault">Fault</string>
+    <string name="home_service_a11y_off">Off</string>
+    <string name="home_service_a11y_unauthorized">Unauthorized</string>
+    <string name="home_service_notification">Persistent notification</string>
+    <string name="home_service_notification_subtitle">Show running status</string>
+    <string name="home_permission_restricted_title">Permission restricted, please remove the restriction.</string>
+    <string name="home_permission_restricted_action">Remove restriction</string>
+
+    <!-- Expansion workbench -->
+    <string name="expansion_title">Text expansion</string>
+    <string name="expansion_status_running">Running</string>
+    <string name="expansion_status_stopped">Stopped</string>
+    <string name="expansion_rules_loaded">%d rules loaded</string>
+    <string name="expansion_preview_title">Live match preview</string>
+    <string name="expansion_preview_hint">Type below to see which rule will be triggered (preview only, does not replace).</string>
+    <string name="expansion_preview_input_label">Input text</string>
+    <string name="expansion_preview_input_placeholder">e.g., type :eml to see the match</string>
+    <string name="expansion_preview_no_match">No matching rule</string>
+    <string name="expansion_preview_match_format">Match: %1$s\n→ %2$s</string>
+    <string name="expansion_preview_regex_format">Regex: %1$s\n→ %2$s</string>
+    <string name="expansion_history_title">Expansion history</string>
+    <string name="expansion_history_clear">Clear</string>
+    <string name="expansion_history_clear_confirm">Clear all expansion history?</string>
+    <string name="expansion_usage_title">Usage</string>
+    <string name="expansion_entry_rules">Rules</string>
+    <string name="expansion_entry_files">Files</string>
+    <string name="expansion_entry_global_vars">Global variables</string>
+    <string name="expansion_entry_package_store">Package store</string>
+    <string name="expansion_empty_rules_title">No rules yet</string>
+    <string name="expansion_empty_rules_subtitle">Create your first rule or install one from the package store.</string>
+    <string name="expansion_action_create_rule">Create rule</string>
+    <string name="expansion_action_install_rule">Install rule</string>
+
+    <!-- Match list -->
+    <string name="match_list_title">Rules</string>
+    <string name="match_list_title_with_count">Rules (%1$d)</string>
+    <string name="package_store_title">Package Store</string>
+    <string name="match_list_search_hint">Search triggers / replace / label</string>
+    <string name="match_list_no_matches">No matching rules</string>
+    <string name="match_list_clear_search">Clear search</string>
+    <string name="match_list_empty_title">No rules</string>
+    <string name="match_list_empty_subtitle">Tap + to create a rule</string>
+    <string name="match_list_delete_snackbar">Rule deleted</string>
+    <string name="match_list_deleted">Rule deleted</string>
+    <string name="match_list_filter_all_files">All files</string>
+    <string name="match_list_results_format">%1$d / %2$d</string>
+    <string name="match_new_select_file_title">Select target file</string>
+    <string name="match_new_default_file">Default</string>
+
+    <!-- Match editor -->
+    <string name="match_editor_title_new">New rule</string>
+    <string name="match_editor_title_edit">Edit rule</string>
+    <string name="match_editor_tab_basic">Basic</string>
+    <string name="match_editor_tab_advanced">Advanced</string>
+    <string name="match_editor_section_trigger">Trigger</string>
+    <string name="match_editor_trigger_mode_plain">Plain trigger</string>
+    <string name="match_editor_trigger_mode_regex">Regex trigger</string>
+    <string name="match_editor_prefix_label">Trigger prefix</string>
+    <string name="match_editor_trigger_label">Trigger word</string>
+    <string name="match_editor_trigger_placeholder">One per line, e.g. eml</string>
+    <string name="match_editor_trigger_helper">Multiple triggers? Enter one per line, all trigger the same rule.</string>
+    <string name="match_editor_regex_label">Regular expression</string>
+    <string name="match_editor_regex_placeholder">e.g. \b\d{4}-\d{2}-\d{2}\b</string>
+    <string name="match_editor_replace_label">Replace with</string>
+    <string name="match_editor_replace_placeholder">e.g. my@email.com, supports {{var}} and $|$ cursor marker</string>
+    <string name="match_editor_section_word_boundary">Word boundary</string>
+    <string name="match_editor_word_boundary_full">Match whole word</string>
+    <string name="match_editor_word_boundary_left">Left boundary only</string>
+    <string name="match_editor_word_boundary_right">Right boundary only</string>
+    <string name="match_editor_section_advanced">Advanced</string>
+    <string name="match_editor_propagate_case">Propagate trigger case</string>
+    <string name="match_editor_label">Label</string>
+    <string name="match_editor_section_vars">Rule variables (%1$d)</string>
+    <string name="match_editor_add_var">Add</string>
+    <string name="match_editor_syntax_help">Syntax help</string>
+    <string name="match_editor_unsaved_title">Unsaved changes</string>
+    <string name="match_editor_unsaved_message">Discard changes, keep editing, or save?</string>
+    <string name="match_editor_unsaved_discard">Discard</string>
+    <string name="match_editor_unsaved_keep">Keep editing</string>
+    <string name="match_editor_error_empty_trigger">Trigger word cannot be empty</string>
+    <string name="match_editor_error_empty_regex">Regex cannot be empty</string>
+    <string name="match_editor_error_invalid_regex">Invalid regular expression</string>
+    <string name="match_editor_error_duplicate_trigger">Trigger already exists</string>
+    <string name="match_editor_error_empty_replace">Replace text cannot be empty</string>
+    <string name="match_editor_save_failed">Save failed: %1$s</string>
+
+    <!-- Files -->
+    <string name="files_title">Files</string>
+    <string name="files_title_with_count">Files (%1$d)</string>
+    <string name="files_empty_title">No YAML files</string>
+    <string name="files_empty_subtitle">Create a file or import YAML.</string>
+    <string name="files_action_create">Create file</string>
+    <string name="files_action_import">Import YAML</string>
+    <string name="files_action_export">Export</string>
+    <string name="files_action_sync">Sync settings</string>
+    <string name="files_workspace_path">Workspace: %1$s</string>
+    <string name="files_copy_path">Copy path</string>
+    <string name="files_create_dialog_title">Create rule file</string>
+    <string name="files_create_name_hint">File name (no extension)</string>
+    <string name="files_create_name_invalid">Only letters, numbers, underscore and hyphen are allowed</string>
+    <string name="files_create_extension_format">File will be saved as %1$s.yml</string>
+    <string name="files_delete_title">Delete file</string>
+    <string name="files_delete_message">Delete "%1$s"?</string>
+    <string name="files_delete_impact">This file contains %1$d rules, deletion cannot be undone.</string>
+    <string name="files_imported">Imported %1$s</string>
+    <string name="files_import_failed">Import failed: %1$s</string>
+    <string name="files_exported">Exported</string>
+    <string name="files_export_failed">Export failed: %1$s</string>
+    <string name="files_import_conflict_title">File already exists</string>
+    <string name="files_import_conflict_message">"%1$s" already exists. Overwrite, rename, or cancel?</string>
+    <string name="files_import_conflict_overwrite">Overwrite</string>
+    <string name="files_import_conflict_rename">Rename</string>
+    <string name="files_rules_count">%1$d rules</string>
+    <string name="files_vars_count">%1$d variables</string>
+    <string name="files_rules_and_vars_count">%1$d rules, %2$d variables</string>
+
+    <!-- Global variables -->
+    <string name="global_vars_title">Global variables</string>
+    <string name="global_vars_title_with_count">Global variables (%1$d)</string>
+    <string name="global_vars_empty_title">No global variables</string>
+    <string name="global_vars_empty_subtitle">Global variables work for all {{name}} placeholders.</string>
+    <string name="global_vars_no_file_hint">Create a rule file first to add global variables.</string>
+    <string name="global_vars_delete_title">Delete variable</string>
+    <string name="global_vars_delete_message">Delete global variable "%1$s"?</string>
+    <string name="global_vars_in_use_warning">This variable is used by %1$d rules.</string>
+    <string name="var_editor_name_hint">Variable name, e.g. name or date_today</string>
+    <string name="var_editor_type">Type</string>
+    <string name="var_editor_echo_value">Fixed text</string>
+    <string name="var_editor_date_format">Format (strftime)</string>
+    <string name="var_editor_date_offset">Offset seconds</string>
+    <string name="var_editor_random_min">Minimum</string>
+    <string name="var_editor_random_max">Maximum</string>
+    <string name="var_editor_choice_values">Choices (one per line)</string>
+    <string name="var_editor_no_params">No extra parameters for this type</string>
+
+    <!-- Sync -->
+    <string name="sync_title">Sync settings</string>
+    <string name="sync_method">Sync method</string>
+    <string name="sync_method_none">None</string>
+    <string name="sync_method_local">Local folder</string>
+    <string name="sync_method_webdav">WebDAV</string>
+    <string name="sync_local_path">Folder path</string>
+    <string name="sync_webdav_url">WebDAV URL</string>
+    <string name="sync_username">Username</string>
+    <string name="sync_password">Password</string>
+    <string name="sync_show_password">Show password</string>
+    <string name="sync_hide_password">Hide password</string>
+    <string name="sync_conflict_strategy">Conflict strategy</string>
+    <string name="sync_conflict_last_write_wins">Latest write wins</string>
+    <string name="sync_conflict_keep_both">Keep both (.conflict suffix)</string>
+    <string name="sync_wifi_only">Wi-Fi only</string>
+    <string name="sync_auto_push">Push after save</string>
+    <string name="sync_test">Test connection</string>
+    <string name="sync_testing">Testing…</string>
+    <string name="sync_test_success">Connection successful</string>
+    <string name="sync_test_failed">Connection failed</string>
+    <string name="sync_push">Push</string>
+    <string name="sync_pull">Pull</string>
+    <string name="sync_both">Sync both</string>
+    <string name="sync_push_confirm">Push local files to remote? This may overwrite remote files.</string>
+    <string name="sync_pull_confirm">Pull remote files to local? This may overwrite local files.</string>
+    <string name="sync_both_confirm">Bidirectional sync may cause conflicts. Continue?</string>
+    <string name="sync_result_format">%1$s completed: %2$d uploaded, %3$d downloaded, %4$d conflicts</string>
+    <string name="sync_status">Status: %1$s</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_input">Input</string>
+    <string name="settings_section_sync_backup">Sync &amp; backup</string>
+    <string name="settings_section_advanced">Advanced</string>
+    <string name="settings_section_support">Support</string>
+    <string name="settings_dynamic_color">Dynamic color</string>
+    <string name="settings_dynamic_color_subtitle">Use system color scheme</string>
+    <string name="settings_search_trigger">Quick search trigger</string>
+    <string name="settings_search_trigger_disabled">Disabled</string>
+    <string name="settings_search_trigger_hint">Leave blank to disable, default :s</string>
+    <string name="settings_search_trigger_description">Type this trigger in any input to open the search overlay.</string>
+    <string name="settings_trigger_prefix">Default trigger prefix</string>
+    <string name="settings_trigger_prefix_hint">e.g. : or =, leave blank for none</string>
+    <string name="settings_trigger_prefix_description">New rules and files without explicit prefix will use this. Changing it affects all rules that inherit it.</string>
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_advanced_subtitle">Shizuku / HTTP server</string>
+    <string name="settings_about">About</string>
+    <string name="settings_help">Help</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_open_source">Open source licenses</string>
+
+    <!-- Auth -->
+    <string name="auth_a11y_title">Accessibility authorization</string>
+    <string name="auth_a11y_basic_title">Basic</string>
+    <string name="auth_a11y_basic_summary">Grant accessibility permission. You may need to re-authorize after it is disabled.</string>
+    <string name="auth_a11y_basic_granted">Accessibility permission granted</string>
+    <string name="auth_a11y_basic_manual">Authorize manually</string>
+    <string name="auth_a11y_enhanced_title">Enhanced</string>
+    <string name="auth_a11y_enhanced_summary">Grant WRITE_SECURE_SETTINGS to control accessibility automatically.</string>
+    <string name="auth_a11y_enhanced_granted">WRITE_SECURE_SETTINGS granted</string>
+    <string name="auth_a11y_shizuku">Shizuku authorization</string>
+    <string name="auth_a11y_command">Command authorization</string>
+    <string name="auth_a11y_command_steps">1. Have a computer with adb installed.\n2. Enable USB debugging on your phone and connect it.\n3. Run the following command in your computer\'s terminal.</string>
+    <string name="auth_a11y_command_copied">Command copied</string>
+    <string name="auth_a11y_command_failed">Still failing after running?</string>
+    <string name="auth_a11y_return_check">Accessibility service checked automatically after return.</string>
+    <string name="action_close">Close</string>
+
+    <!-- HTTP / Advanced -->
+    <string name="advanced_title">Advanced settings</string>
+    <string name="advanced_shizuku">Shizuku</string>
+    <string name="advanced_shizuku_enable">Enable optimization</string>
+    <string name="advanced_shizuku_enable_subtitle">Improve permission optimization</string>
+    <string name="advanced_shizuku_unauthorized">Not authorized, tap to authorize</string>
+    <string name="advanced_http">HTTP</string>
+    <string name="advanced_http_service">HTTP server</string>
+    <string name="advanced_http_service_subtitle">Connect via browser for debugging</string>
+    <string name="advanced_http_url_hint">Tap a link to open</string>
+    <string name="advanced_http_port">Server port</string>
+    <string name="advanced_http_port_range">Enter a port from %1$d to %2$d</string>
+    <string name="advanced_http_port_invalid">Invalid port</string>
+    <string name="advanced_http_start_failed">HTTP server failed to start: %1$s</string>
+
+    <!-- Empty states / messages -->
+    <string name="empty_no_data">No data</string>
+    <string name="loading">Loading…</string>
+    <string name="error_generic">Something went wrong</string>
+    <string name="error_retry">Retry</string>
+    <string name="snackbar_dismiss">Dismiss</string>
 </resources>

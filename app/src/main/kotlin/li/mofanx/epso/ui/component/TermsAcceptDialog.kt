@@ -20,6 +20,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withLink
 import li.mofanx.epso.MainActivity
+import li.mofanx.epso.store.storeFlow
 import li.mofanx.epso.ui.share.LocalMainViewModel
 import li.mofanx.epso.util.throttle
 
@@ -85,6 +86,7 @@ fun TermsAcceptDialog() {
                     step++
                 } else {
                     mainVm.termsAcceptedFlow.value = true
+                    storeFlow.value = storeFlow.value.copy(termsAccepted = true)
                 }
             }) {
                 Text(text = "同意")

@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import li.mofanx.epso.appScope
+import li.mofanx.epso.store.storeFlow
 import li.mofanx.epso.util.LogUtils
 import li.mofanx.epso.util.launchTry
 import li.mofanx.epso.util.matchesFolder
@@ -66,12 +67,21 @@ object MatchStore {
      * 如果工作区为空，自动创建一个默认的 base.yml。
      */
     fun init(workspacePath: String = "") {
-        val dir = if (workspacePath.isNotEmpty()) File(workspacePath) else matchesFolder
-        workspace = YamlWorkspace(dir)
+        updateWorkspace(workspacePath)
         appScope.launchTry(Dispatchers.IO) {
             ensureDefaultFile()
             reload()
+            // 全局前缀/工作区路径变化时自动重载
+            collectSettings()
         }
+    }
+
+    /**
+     * 确保 base.yml 存在并返回该文件（供 UI 兜底使用）
+     */
+    suspend fun ensureBaseFile(): File = withContext(Dispatchers.IO) {
+        ensureDefaultFile()
+        workspace.listRootFiles().firstOrNull() ?: workspace.createFile("base")
     }
 
     /**
@@ -79,7 +89,7 @@ object MatchStore {
      */
     suspend fun reload() {
         LogUtils.d(TAG, "Reloading workspace: ${workspace.dir.absolutePath}")
-        val (dict, vars) = workspace.loadAll()
+        val (dict, vars) = workspace.loadAll(defaultPrefix)
         _matchDict.value = dict
         _globalVars.value = vars
         refreshGroups()
@@ -94,7 +104,7 @@ object MatchStore {
     suspend fun addMatch(groupFile: File, match: Match) {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
-                val group = workspace.readFile(groupFile)
+                val group = workspace.readFile(groupFile, defaultPrefix)
                 workspace.writeFile(groupFile, group.copy(matches = group.matches + match))
             }
         }
@@ -107,7 +117,7 @@ object MatchStore {
     suspend fun updateMatch(groupFile: File, oldMatch: Match, newMatch: Match) {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
-                val group = workspace.readFile(groupFile)
+                val group = workspace.readFile(groupFile, defaultPrefix)
                 workspace.writeFile(groupFile, group.copy(
                     matches = group.matches.map { if (it == oldMatch) newMatch else it }
                 ))
@@ -122,7 +132,7 @@ object MatchStore {
     suspend fun deleteMatch(groupFile: File, match: Match) {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
-                val group = workspace.readFile(groupFile)
+                val group = workspace.readFile(groupFile, defaultPrefix)
                 workspace.writeFile(groupFile, group.copy(
                     matches = group.matches.filter { it != match }
                 ))
@@ -137,7 +147,7 @@ object MatchStore {
     suspend fun updateGlobalVars(groupFile: File, vars: List<Var>) {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
-                val group = workspace.readFile(groupFile)
+                val group = workspace.readFile(groupFile, defaultPrefix)
                 workspace.writeFile(groupFile, group.copy(globalVars = vars))
             }
         }
@@ -178,8 +188,8 @@ object MatchStore {
     suspend fun addPackageImport(packageName: String) {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
-                val baseFile = workspace.listFiles().firstOrNull() ?: return@withContext
-                val group = workspace.readFile(baseFile)
+                val baseFile = workspace.listRootFiles().firstOrNull() ?: workspace.createFile("base")
+                val group = workspace.readFile(baseFile, defaultPrefix)
                 val importPath = "packages/$packageName/package.yml"
                 if (importPath !in group.imports) {
                     workspace.writeFile(baseFile, group.copy(imports = group.imports + importPath))
@@ -195,8 +205,8 @@ object MatchStore {
     suspend fun removePackageImport(packageName: String) {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
-                val baseFile = workspace.listFiles().firstOrNull() ?: return@withContext
-                val group = workspace.readFile(baseFile)
+                val baseFile = workspace.listRootFiles().firstOrNull() ?: return@withContext
+                val group = workspace.readFile(baseFile, defaultPrefix)
                 val importPath = "packages/$packageName/package.yml"
                 if (importPath in group.imports) {
                     workspace.writeFile(baseFile, group.copy(imports = group.imports - importPath))
@@ -214,7 +224,7 @@ object MatchStore {
     private suspend fun refreshGroups() = withContext(Dispatchers.IO) {
         val files = workspace.listFiles()
         _groups.value = files.map { file ->
-            workspace.readFile(file)
+            workspace.readFile(file, defaultPrefix)
         }
     }
 
@@ -225,6 +235,29 @@ object MatchStore {
         if (workspace.listFiles().isEmpty()) {
             workspace.createFile("base")
             LogUtils.d(TAG, "Created default base.yml")
+        }
+    }
+
+    private val defaultPrefix: String
+        get() = storeFlow.value.triggerPrefix
+
+    private fun updateWorkspace(path: String) {
+        val dir = if (path.isNotEmpty()) File(path) else matchesFolder
+        workspace = if (dir.isValidWorkspace()) {
+            YamlWorkspace(dir)
+        } else {
+            LogUtils.e(TAG, "工作区不可用，使用默认路径: $matchesFolder")
+            YamlWorkspace(matchesFolder)
+        }
+    }
+
+    private fun collectSettings() {
+        appScope.launchTry(Dispatchers.IO) {
+            storeFlow.collect { store ->
+                updateWorkspace(store.expansionWorkspacePath)
+                ensureDefaultFile()
+                reload()
+            }
         }
     }
 }

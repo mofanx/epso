@@ -39,7 +39,6 @@ import li.mofanx.epso.util.AndroidTarget
 import li.mofanx.epso.util.LogUtils
 import li.mofanx.epso.util.PKG_FLAGS
 import li.mofanx.epso.util.deviceInfoDesc
-import li.mofanx.epso.util.initAppState
 import li.mofanx.epso.util.initToast
 import li.mofanx.epso.util.launchTry
 import li.mofanx.epso.util.toast
@@ -235,7 +234,6 @@ class App : Application() {
         initToast()
         initStore()
         initChannel()
-        initAppState()
         initShizuku()
         MatchStore.init(storeFlow.value.expansionWorkspacePath)
     }

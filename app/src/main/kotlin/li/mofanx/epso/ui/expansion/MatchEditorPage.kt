@@ -1,5 +1,6 @@
 package li.mofanx.epso.ui.expansion
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -16,35 +18,40 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import li.mofanx.epso.expansion.Match
-import li.mofanx.epso.expansion.MatchStore
+import androidx.lifecycle.viewmodel.compose.viewModel
+import li.mofanx.epso.R
 import li.mofanx.epso.expansion.Var
-import li.mofanx.epso.expansion.VarParams
-import li.mofanx.epso.ui.style.surfaceCardColors
+import li.mofanx.epso.ui.common.feedback.BannerType
+import li.mofanx.epso.ui.common.feedback.StatusBanner
+import li.mofanx.epso.ui.common.form.FormState
+import li.mofanx.epso.ui.common.form.canSubmit
+import li.mofanx.epso.ui.common.form.draft
+import li.mofanx.epso.ui.common.form.isDirty
 import li.mofanx.epso.ui.component.PerfIcon
 import li.mofanx.epso.ui.component.PerfIconButton
 import li.mofanx.epso.ui.component.PerfTopAppBar
 import li.mofanx.epso.ui.share.LocalMainViewModel
 import li.mofanx.epso.ui.style.itemHorizontalPadding
 import li.mofanx.epso.ui.style.itemVerticalPadding
+import li.mofanx.epso.ui.style.surfaceCardColors
 import li.mofanx.epso.util.throttle
-import java.io.File
 
 /**
  * 规则编辑页
@@ -53,66 +60,31 @@ import java.io.File
  * - [route].triggerToEdit 为空 → 新建模式
  * - 非空 → 编辑模式，从 MatchStore 加载对应规则
  *
- * 支持字段：
- * - trigger / triggers（多触发词用换行分隔）
- * - replace（支持 {{var}} 和 $|$ 语法）
- * - regex（正则触发）
- * - word / left_word / right_word
- * - propagate_case
- * - label（备注）
- *
- * 变量（vars）管理和 form 字段留待后续迭代（Phase 4/6）。
+ * 基础/高级分层：
+ * - 基础：触发词 / 正则、替换文本
+ * - 高级：单词边界、大小写传播、备注、规则变量、YAML 语法提示
  */
+private enum class MatchEditorTab { Basic, Advanced }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MatchEditorPage(route: MatchEditorRoute) {
     val mainVm = LocalMainViewModel.current
-    val scope = rememberCoroutineScope()
+    val vm = viewModel<MatchEditorVm>()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
-    val sourceFile = remember { File(route.sourceFilePath) }
+    val formState by vm.formState.collectAsState()
+    val draft = formState.draft() ?: MatchDraft()
     val isEdit = route.triggerToEdit.isNotEmpty()
 
-    // ── 编辑状态 ──────────────────────────────────────────────────
-    // 触发词：多个用换行分隔
-    var triggersText by remember { mutableStateOf("") }
-    var replace by remember { mutableStateOf("") }
-    var regex by remember { mutableStateOf("") }
-    var isRegex by remember { mutableStateOf(false) }
-    var word by remember { mutableStateOf(false) }
-    var leftWord by remember { mutableStateOf(false) }
-    var rightWord by remember { mutableStateOf(false) }
-    var propagateCase by remember { mutableStateOf(false) }
-    var label by remember { mutableStateOf("") }
-    var vars by remember { mutableStateOf(listOf<Var>()) }
+    LaunchedEffect(route) { vm.load(route) }
+    LaunchedEffect(formState) { if (formState is FormState.Success) mainVm.popPage() }
+
+    var showUnsavedDialog by remember { mutableStateOf(false) }
     var showVarEditor by remember { mutableStateOf(false) }
     var editingVarIndex by remember { mutableStateOf(-1) }
     var editingVar by remember { mutableStateOf(Var()) }
-
-    // 编辑模式时存储原始 match（用于 updateMatch 定位）
-    var originalMatch by remember { mutableStateOf<Match?>(null) }
-
-    // 加载已有规则
-    LaunchedEffect(route.triggerToEdit) {
-        if (isEdit) {
-            val key = route.triggerToEdit
-            val match = MatchStore.exactMatches[key]
-                ?: MatchStore.regexMatches.values.find { it.regex == key }
-                ?: return@LaunchedEffect
-
-            originalMatch = match
-            triggersText = match.allTriggers.joinToString("\n")
-            replace = match.replace
-            regex = match.regex
-            isRegex = match.isRegex
-            word = match.word
-            leftWord = match.leftWord
-            rightWord = match.rightWord
-            propagateCase = match.propagateCase
-            label = match.label ?: ""
-            vars = match.vars
-        }
-    }
+    var selectedTab by remember { mutableStateOf(MatchEditorTab.Basic) }
 
     if (showVarEditor) {
         VarEditorDialog(
@@ -120,53 +92,60 @@ fun MatchEditorPage(route: MatchEditorRoute) {
             isNew = editingVarIndex < 0,
             onValueChange = { editingVar = it },
             onSave = {
-                vars = if (editingVarIndex < 0) {
-                    vars + editingVar
+                val updatedVars = if (editingVarIndex < 0) {
+                    draft.vars + editingVar
                 } else {
-                    vars.toMutableList().also { it[editingVarIndex] = editingVar }
+                    draft.vars.toMutableList().also { it[editingVarIndex] = editingVar }
                 }
+                vm.updateDraft { copy(vars = updatedVars) }
                 showVarEditor = false
             },
             onDismiss = { showVarEditor = false },
         )
     }
 
-    val title = if (isEdit) "编辑规则" else "新建规则"
-
-    // ── 保存逻辑 ──────────────────────────────────────────────────
-    val canSave = if (isRegex) regex.isNotBlank() && replace.isNotBlank()
-                  else triggersText.isNotBlank() && replace.isNotBlank()
-
-    fun save() {
-        if (!canSave) return
-        scope.launch(Dispatchers.IO) {
-            val triggers = triggersText.lines()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-
-            val newMatch = Match(
-                trigger = if (!isRegex) triggers.firstOrNull() ?: "" else "",
-                triggers = if (!isRegex) triggers.drop(1) else emptyList(),
-                replace = replace,
-                regex = if (isRegex) regex else "",
-                word = word,
-                leftWord = leftWord,
-                rightWord = rightWord,
-                propagateCase = propagateCase,
-                label = label.ifBlank { null },
-                vars = vars,
-            )
-
-            val original = originalMatch
-            if (isEdit && original != null) {
-                MatchStore.updateMatch(sourceFile, original, newMatch)
-            } else {
-                MatchStore.addMatch(sourceFile, newMatch)
-            }
-
+    val onBack = throttle {
+        if (formState.isDirty()) {
+            showUnsavedDialog = true
+        } else {
             mainVm.popPage()
         }
     }
+
+    BackHandler(enabled = formState.isDirty(), onBack = onBack)
+
+    if (showUnsavedDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnsavedDialog = false },
+            title = { Text(stringResource(R.string.match_editor_unsaved_title)) },
+            text = { Text(stringResource(R.string.match_editor_unsaved_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showUnsavedDialog = false
+                        vm.save()
+                    },
+                ) {
+                    Text(stringResource(R.string.action_save))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showUnsavedDialog = false
+                        mainVm.popPage()
+                    },
+                ) {
+                    Text(stringResource(R.string.match_editor_unsaved_discard))
+                }
+            },
+        )
+    }
+
+    val title = stringResource(
+        if (isEdit) R.string.match_editor_title_edit else R.string.match_editor_title_new
+    )
+    val errors = (formState as? FormState.Editing)?.errors ?: emptyMap()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -177,15 +156,15 @@ fun MatchEditorPage(route: MatchEditorRoute) {
                 navigationIcon = {
                     PerfIconButton(
                         imageVector = PerfIcon.ArrowBack,
-                        onClick = throttle { mainVm.popPage() },
+                        onClick = onBack,
                     )
                 },
                 actions = {
                     TextButton(
-                        onClick = throttle { save() },
-                        enabled = canSave,
+                        onClick = throttle { vm.save() },
+                        enabled = formState.canSubmit(),
                     ) {
-                        Text("保存")
+                        Text(stringResource(R.string.action_save))
                     }
                 },
             )
@@ -200,201 +179,283 @@ fun MatchEditorPage(route: MatchEditorRoute) {
         ) {
             Spacer(Modifier.height(itemVerticalPadding))
 
-            // ── 触发词 / 正则 ──────────────────────────────────────
-
-            SectionLabel("触发词")
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Checkbox(checked = isRegex, onCheckedChange = { isRegex = it })
-                Text("使用正则触发", style = MaterialTheme.typography.bodyMedium)
-            }
-
-            if (isRegex) {
-                OutlinedTextField(
-                    value = regex,
-                    onValueChange = { regex = it },
-                    label = { Text("正则表达式") },
-                    placeholder = { Text("如：\\b\\d{4}-\\d{2}-\\d{2}\\b") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-            } else {
-                OutlinedTextField(
-                    value = triggersText,
-                    onValueChange = { triggersText = it },
-                    label = { Text("触发词（每行一个）") },
-                    placeholder = { Text("如：:eml\n:email\n:mymail") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 6,
-                )
-                Text(
-                    text = "多个触发词请每行一个，全部触发同一规则",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            val failed = formState as? FormState.Failed
+            if (failed != null) {
+                StatusBanner(
+                    title = stringResource(R.string.match_editor_save_failed, failed.error),
+                    actionLabel = stringResource(R.string.action_retry),
+                    onAction = { vm.save() },
+                    type = BannerType.Warning(),
                 )
             }
 
-            // ── 替换文本 ───────────────────────────────────────────
-
-            SectionLabel("替换文本")
-
-            OutlinedTextField(
-                value = replace,
-                onValueChange = { replace = it },
-                label = { Text("替换为") },
-                placeholder = { Text("如：my@email.com，支持 {{var}} 变量和 \$|\$ 光标标记") },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 3,
-                maxLines = 10,
-            )
-
-            // ── 单词边界 ───────────────────────────────────────────
-
-            SectionLabel("单词边界")
-
-            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                CheckboxRow(
-                    label = "word（左右两侧均需边界）",
-                    checked = word,
-                    onCheckedChange = {
-                        word = it
-                        if (it) { leftWord = false; rightWord = false }
-                    },
-                )
-                CheckboxRow(
-                    label = "left_word（仅左侧需边界）",
-                    checked = leftWord,
-                    onCheckedChange = {
-                        leftWord = it
-                        if (it) word = false
-                    },
-                )
-                CheckboxRow(
-                    label = "right_word（仅右侧需边界）",
-                    checked = rightWord,
-                    onCheckedChange = {
-                        rightWord = it
-                        if (it) word = false
-                    },
-                )
-            }
-
-            // ── 高级选项 ───────────────────────────────────────────
-
-            SectionLabel("高级")
-
-            CheckboxRow(
-                label = "propagate_case（传播触发词大小写）",
-                checked = propagateCase,
-                onCheckedChange = { propagateCase = it },
-            )
-
-            OutlinedTextField(
-                value = label,
-                onValueChange = { label = it },
-                label = { Text("备注（label，可选）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-
-            // ── 规则变量 ───────────────────────────────────────────
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SectionLabel("规则变量 (${vars.size})")
-                TextButton(onClick = {
-                    editingVarIndex = -1
-                    editingVar = Var()
-                    showVarEditor = true
-                }) {
-                    PerfIcon(imageVector = PerfIcon.Add)
-                    Text("添加")
+            PrimaryTabRow(selectedTabIndex = selectedTab.ordinal) {
+                MatchEditorTab.entries.forEachIndexed { index, tab ->
+                    Tab(
+                        selected = selectedTab.ordinal == index,
+                        onClick = { selectedTab = tab },
+                        text = { Text(tabLabel(tab)) },
+                    )
                 }
             }
 
-            if (vars.isNotEmpty()) {
-                Card(
-                    shape = MaterialTheme.shapes.large,
-                    colors = surfaceCardColors,
+            Spacer(Modifier.height(itemVerticalPadding / 2))
+
+            when (selectedTab) {
+                MatchEditorTab.Basic -> BasicTab(
+                    draft = draft,
+                    errors = errors,
+                    onDraftChange = { newDraft -> vm.updateDraft { newDraft } },
+                )
+                MatchEditorTab.Advanced -> AdvancedTab(
+                    draft = draft,
+                    onDraftChange = { newDraft -> vm.updateDraft { newDraft } },
+                    onAddVar = {
+                        editingVarIndex = -1
+                        editingVar = Var()
+                        showVarEditor = true
+                    },
+                    onEditVar = { index, v ->
+                        editingVarIndex = index
+                        editingVar = v
+                        showVarEditor = true
+                    },
+                    onDeleteVar = { index ->
+                        val updatedVars = draft.vars.toMutableList().also { it.removeAt(index) }
+                        vm.updateDraft { copy(vars = updatedVars) }
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(80.dp))
+        }
+    }
+}
+
+@Composable
+private fun tabLabel(tab: MatchEditorTab): String = when (tab) {
+    MatchEditorTab.Basic -> stringResource(R.string.match_editor_tab_basic)
+    MatchEditorTab.Advanced -> stringResource(R.string.match_editor_tab_advanced)
+}
+
+@Composable
+private fun resolveError(key: String): String = when (key) {
+    "match_editor_error_empty_trigger" -> stringResource(R.string.match_editor_error_empty_trigger)
+    "match_editor_error_empty_regex" -> stringResource(R.string.match_editor_error_empty_regex)
+    "match_editor_error_invalid_regex" -> stringResource(R.string.match_editor_error_invalid_regex)
+    "match_editor_error_duplicate_trigger" -> stringResource(R.string.match_editor_error_duplicate_trigger)
+    "match_editor_error_empty_replace" -> stringResource(R.string.match_editor_error_empty_replace)
+    else -> key
+}
+
+@Composable
+private fun BasicTab(
+    draft: MatchDraft,
+    errors: Map<String, String>,
+    onDraftChange: (MatchDraft) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(itemHorizontalPadding / 2)) {
+        SectionLabel(stringResource(R.string.match_editor_section_trigger))
+
+        CheckboxRow(
+            label = stringResource(
+                if (draft.isRegex) R.string.match_editor_trigger_mode_regex
+                else R.string.match_editor_trigger_mode_plain
+            ),
+            checked = draft.isRegex,
+            onCheckedChange = { onDraftChange(draft.copy(isRegex = it)) },
+        )
+
+        if (draft.isRegex) {
+            OutlinedTextField(
+                value = draft.regex,
+                onValueChange = { onDraftChange(draft.copy(regex = it)) },
+                label = { Text(stringResource(R.string.match_editor_regex_label)) },
+                placeholder = { Text(stringResource(R.string.match_editor_regex_placeholder)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                isError = errors["regex"] != null,
+                supportingText = errors["regex"]?.let { { Text(resolveError(it)) } },
+            )
+        } else {
+            OutlinedTextField(
+                value = draft.prefix ?: draft.effectivePrefix,
+                onValueChange = { newPrefix ->
+                    val prefix = if (newPrefix.isNotEmpty() && newPrefix == draft.effectivePrefix) {
+                        null
+                    } else {
+                        newPrefix
+                    }
+                    onDraftChange(draft.copy(prefix = prefix))
+                },
+                label = { Text(stringResource(R.string.match_editor_prefix_label)) },
+                placeholder = { Text(draft.effectivePrefix) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                isError = errors["trigger"] != null,
+            )
+            OutlinedTextField(
+                value = draft.triggersText,
+                onValueChange = { onDraftChange(draft.copy(triggersText = it)) },
+                label = { Text(stringResource(R.string.match_editor_trigger_label)) },
+                placeholder = { Text(stringResource(R.string.match_editor_trigger_placeholder)) },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 6,
+                isError = errors["trigger"] != null,
+                supportingText = errors["trigger"]?.let { { Text(resolveError(it)) } },
+            )
+            Text(
+                text = stringResource(R.string.match_editor_trigger_helper),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        SectionLabel(stringResource(R.string.match_editor_replace_label))
+
+        OutlinedTextField(
+            value = draft.replace,
+            onValueChange = { onDraftChange(draft.copy(replace = it)) },
+            label = { Text(stringResource(R.string.match_editor_replace_label)) },
+            placeholder = { Text(stringResource(R.string.match_editor_replace_placeholder)) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+            maxLines = 10,
+            isError = errors["replace"] != null,
+            supportingText = errors["replace"]?.let { { Text(resolveError(it)) } },
+        )
+    }
+}
+
+@Composable
+private fun AdvancedTab(
+    draft: MatchDraft,
+    onDraftChange: (MatchDraft) -> Unit,
+    onAddVar: () -> Unit,
+    onEditVar: (Int, Var) -> Unit,
+    onDeleteVar: (Int) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(itemHorizontalPadding / 2)) {
+        SectionLabel(stringResource(R.string.match_editor_section_word_boundary))
+
+        CheckboxRow(
+            label = stringResource(R.string.match_editor_word_boundary_full),
+            checked = draft.word,
+            onCheckedChange = {
+                onDraftChange(draft.copy(word = it, leftWord = false, rightWord = false))
+            },
+        )
+        CheckboxRow(
+            label = stringResource(R.string.match_editor_word_boundary_left),
+            checked = draft.leftWord,
+            onCheckedChange = {
+                onDraftChange(draft.copy(leftWord = it, word = false, rightWord = false))
+            },
+        )
+        CheckboxRow(
+            label = stringResource(R.string.match_editor_word_boundary_right),
+            checked = draft.rightWord,
+            onCheckedChange = {
+                onDraftChange(draft.copy(rightWord = it, word = false, leftWord = false))
+            },
+        )
+
+        SectionLabel(stringResource(R.string.match_editor_section_advanced))
+
+        CheckboxRow(
+            label = stringResource(R.string.match_editor_propagate_case),
+            checked = draft.propagateCase,
+            onCheckedChange = { onDraftChange(draft.copy(propagateCase = it)) },
+        )
+
+        OutlinedTextField(
+            value = draft.label,
+            onValueChange = { onDraftChange(draft.copy(label = it)) },
+            label = { Text(stringResource(R.string.match_editor_label)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SectionLabel(stringResource(R.string.match_editor_section_vars, draft.vars.size))
+            TextButton(onClick = onAddVar) {
+                PerfIcon(imageVector = PerfIcon.Add)
+                Text(stringResource(R.string.match_editor_add_var))
+            }
+        }
+
+        if (draft.vars.isNotEmpty()) {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = surfaceCardColors,
+            ) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = itemHorizontalPadding,
+                        vertical = 4.dp,
+                    ),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(
-                            horizontal = itemHorizontalPadding,
-                            vertical = 4.dp,
-                        ),
-                    ) {
-                        vars.forEachIndexed { idx, v ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "{{${v.name}}}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Text(
-                                        text = v.type + if (v.params.echo != null) ": ${v.params.echo}" else "",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                PerfIconButton(
-                                    imageVector = PerfIcon.Edit,
-                                    onClick = {
-                                        editingVarIndex = idx
-                                        editingVar = v
-                                        showVarEditor = true
-                                    },
+                    draft.vars.forEachIndexed { idx, v ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "{{${v.name}}}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
-                                PerfIconButton(
-                                    imageVector = PerfIcon.Delete,
-                                    colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                    onClick = {
-                                        vars = vars.toMutableList().also { it.removeAt(idx) }
-                                    },
+                                Text(
+                                    text = v.type + if (v.params.echo != null) ": ${v.params.echo}" else "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            PerfIconButton(
+                                imageVector = PerfIcon.Edit,
+                                onClick = { onEditVar(idx, v) },
+                            )
+                            PerfIconButton(
+                                imageVector = PerfIcon.Delete,
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                ),
+                                onClick = { onDeleteVar(idx) },
+                            )
                         }
                     }
                 }
             }
-
-            // ── YAML 预览 ──────────────────────────────────────────
-
-            SectionLabel("语法提示")
-
-            val hint = buildString {
-                appendLine("# 支持的 YAML 字段：")
-                appendLine("# trigger: :hello")
-                appendLine("# replace: Hello, {{name}}!")
-                appendLine("# vars:")
-                appendLine("#   - name: name")
-                appendLine("#     type: echo")
-                appendLine("#     params:")
-                appendLine("#       echo: World")
-                appendLine("# word: true   # 单词边界")
-                appendLine("# propagate_case: true")
-            }
-            Text(
-                text = hint.trim(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            )
-
-            Spacer(Modifier.height(80.dp))
         }
+
+        SectionLabel(stringResource(R.string.match_editor_syntax_help))
+
+        val hint = buildString {
+            appendLine("# 支持的 YAML 字段：")
+            appendLine("# trigger: :hello")
+            appendLine("# replace: Hello, {{name}}!")
+            appendLine("# vars:")
+            appendLine("#   - name: name")
+            appendLine("#     type: echo")
+            appendLine("#     params:")
+            appendLine("#       echo: World")
+            appendLine("# word: true   # 单词边界")
+            appendLine("# propagate_case: true")
+        }
+        Text(
+            text = hint.trim(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        )
     }
 }
 

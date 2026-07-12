@@ -25,8 +25,6 @@ import li.mofanx.epso.shizuku.shizukuContextFlow
 import li.mofanx.epso.ui.AppOpsAllowRoute
 import li.mofanx.epso.util.AndroidTarget
 import li.mofanx.epso.util.toast
-import li.mofanx.epso.util.updateAllAppInfo
-import li.mofanx.epso.util.updateAppMutex
 import rikka.shizuku.Shizuku
 
 class PermissionState(
@@ -209,28 +207,10 @@ val notificationState by lazy {
 }
 
 val canQueryPkgState by lazy {
-    val permission = PermissionLists.getGetInstalledAppsPermission()
-    val supported by lazy { permission.isSupportRequestPermission(app) }
     PermissionState(
-        name = "读取应用列表权限",
-        check = {
-            if (supported) {
-                // 此框架内部有两个 printStackTrace 导致每次检测都会打印日志污染控制台
-                XXPermissions.isGrantedPermission(app, permission)
-            } else {
-                true
-            }
-        },
-        request = {
-            asyncRequestPermission(it, permission)
-        },
-        reason = AuthReason(
-            text = { "当前操作需要「读取应用列表权限」\n请先前往权限页面授权" },
-            confirm = {
-                XXPermissions.startPermissionActivity(app, permission)
-            }
-        ),
-    )
+        name = "读取应用列表权限（已停用）",
+        check = { true },
+    ).also { it.updateAndGet() }
 }
 
 val canDrawOverlaysState by lazy {
@@ -343,19 +323,10 @@ val allPermissionStates by lazy {
         canWriteExternalStorage,
         ignoreBatteryOptimizationsState,
         writeSecureSettingsState,
-        canQueryPkgState,
         shizukuGrantedState,
     )
 }
 
 fun updatePermissionState() {
-    allPermissionStates.forEach {
-        if (it === canQueryPkgState && !updateAppMutex.mutex.isLocked) {
-            if (canQueryPkgState.updateChanged()) {
-                updateAllAppInfo()
-            }
-        } else {
-            it.updateAndGet()
-        }
-    }
+    allPermissionStates.forEach { it.updateAndGet() }
 }

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CenterFocusWeak
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Eco
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Equalizer
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
@@ -210,4 +212,6 @@ object PerfIcon {
     val TextFields get() = Icons.Outlined.TextFields
     val ArrowDownward get() = Icons.Outlined.ArrowDownward
     val Check get() = Icons.Outlined.Check
+    val Folder get() = Icons.Outlined.Folder
+    val KeyboardArrowDown get() = Icons.Default.KeyboardArrowDown
 }

@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import li.mofanx.epso.R
 import li.mofanx.epso.ui.WebViewRoute
 import li.mofanx.epso.ui.share.LocalMainViewModel
 import li.mofanx.epso.util.copyText
@@ -34,10 +36,10 @@ fun ManualAuthDialog(
         val mainVm = LocalMainViewModel.current
         AlertDialog(
             onDismissRequest = { onUpdateShow(false) },
-            title = { Text(text = "命令授权") },
+            title = { Text(text = stringResource(R.string.auth_a11y_command)) },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(text = "1. 有一台安装了 adb 的电脑\n\n2.手机开启调试模式后连接电脑授权调试\n\n3. 在电脑 cmd/pwsh 中运行如下命令")
+                    Text(text = stringResource(R.string.auth_a11y_command_steps))
                     Spacer(modifier = Modifier.height(4.dp))
                     Box(
                         modifier = Modifier.fillMaxWidth()
@@ -65,6 +67,7 @@ fun ManualAuthDialog(
                                 .padding(4.dp)
                                 .size(20.dp),
                             imageVector = PerfIcon.ContentCopy,
+                            contentDescription = stringResource(R.string.action_copy),
                             tint = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.75f),
                         )
                     }
@@ -75,7 +78,7 @@ fun ManualAuthDialog(
                                 onUpdateShow(false)
                                 mainVm.navigatePage(WebViewRoute(initUrl = "https://github.com/mofanx/epso/issues/43"))
                             }),
-                        text = "运行后授权失败?",
+                        text = stringResource(R.string.auth_a11y_command_failed),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -85,7 +88,7 @@ fun ManualAuthDialog(
                 TextButton(onClick = {
                     onUpdateShow(false)
                 }) {
-                    Text(text = "关闭")
+                    Text(text = stringResource(R.string.action_close))
                 }
             },
         )

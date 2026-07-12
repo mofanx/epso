@@ -128,6 +128,34 @@ fun AdvancedPage() {
         )
     }
 
+    var showApiTokenDlg by remember { mutableStateOf(false) }
+    if (showApiTokenDlg) {
+        val token = HttpService.ensureApiToken()
+        AlertDialog(
+            title = { Text("局域网 API 令牌") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("请求需要携带 Authorization: Bearer <令牌>。请勿分享给不受信任的设备。")
+                    OutlinedTextField(
+                        value = token,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("接口：GET /api/v1/status、GET /api/v1/rules；POST /api/v1/files、/rules、/reload、/expansion")
+                }
+            },
+            onDismissRequest = { showApiTokenDlg = false },
+            confirmButton = {
+                TextButton(onClick = { HttpService.regenerateApiToken() }) { Text("重新生成") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showApiTokenDlg = false }) { Text("关闭") }
+            },
+        )
+    }
+
     var showShizukuState by vm.showShizukuStateFlow.asMutableState()
     if (showShizukuState) {
         val onDismissRequest = { showShizukuState = false }
@@ -269,6 +297,13 @@ fun AdvancedPage() {
                 imageVector = PerfIcon.Edit,
                 onClickLabel = "编辑服务端口",
                 onClick = { showEditPortDlg = true }
+            )
+            SettingItem(
+                title = "API 访问令牌",
+                subtitle = if (httpServerRunning) "查看、重新生成令牌和接口说明" else "启动 HTTP 服务后可通过局域网使用",
+                imageVector = PerfIcon.Api,
+                onClickLabel = "查看 API 访问令牌",
+                onClick = { showApiTokenDlg = true }
             )
 
             Spacer(modifier = Modifier.height(EmptyHeight))

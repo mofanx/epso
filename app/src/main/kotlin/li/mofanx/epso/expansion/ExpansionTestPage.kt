@@ -39,12 +39,10 @@ import java.util.Locale
  */
 @Composable
 fun ExpansionTestPage() {
-    val isRunning by ExpansionService.isRunning.collectAsState()
     val expansionState by (ExpansionService.getInstance()?.expansionState
         ?.collectAsState()
         ?: remember { mutableStateOf(ExpansionState.Idle) })
     val matchDict by MatchStore.matchDict.collectAsState()
-    val matchCount = remember(matchDict) { matchDict.values.distinct().size }
 
     // 实时匹配预览
     var previewInput by remember { mutableStateOf("") }
@@ -105,59 +103,9 @@ fun ExpansionTestPage() {
     Column(
         modifier = Modifier
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = itemHorizontalPadding),
+            .fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(itemHorizontalPadding / 2),
     ) {
-        // ── 服务状态 ──────────────────────────────────────────────
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            colors = surfaceCardColors,
-        ) {
-            Column(
-                modifier = Modifier.padding(itemVerticalPadding),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = "服务状态",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = if (isRunning) "运行中" else "已停止",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isRunning)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.error,
-                    )
-                    Text(
-                        text = "已加载 $matchCount 条规则",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                val stateText = when (val s = expansionState) {
-                    is ExpansionState.Idle -> null
-                    is ExpansionState.Matching -> "匹配中…"
-                    is ExpansionState.Expanding -> "替换中…"
-                    is ExpansionState.Completed -> "✓ ${s.trigger} → ${s.expandedText}"
-                    is ExpansionState.Failed -> "✗ ${s.error}"
-                }
-                if (stateText != null) {
-                    Text(
-                        text = stateText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
         // ── 实时匹配预览 ──────────────────────────────────────────
         Card(
             modifier = Modifier.fillMaxWidth(),

@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">epso</string>
+    <string name="a11y_desc">文本扩展服务\n\n监听文本输入，根据用户自定义规则将触发词自动替换为预设文本，支持变量展开和多规则匹配。</string>
+    <string name="http_server">HTTP服务</string>
+
+    <!-- Common actions -->
+    <string name="action_save">保存</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_delete">删除</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_add">添加</string>
+    <string name="action_create">创建</string>
+    <string name="action_import">导入</string>
+    <string name="action_export">导出</string>
+    <string name="action_search">搜索</string>
+    <string name="action_clear">清空</string>
+    <string name="action_undo">撤销</string>
+    <string name="action_confirm">确认</string>
+    <string name="action_open">打开</string>
+    <string name="action_toggle">切换 %1$s</string>
+    <string name="action_copy">复制</string>
+    <string name="action_retry">重试</string>
+    <string name="action_learn_more">了解更多</string>
+
+    <!-- Home -->
+    <string name="home_title">首页</string>
+    <string name="home_overall_status">总状态</string>
+    <string name="home_status_available">可用</string>
+    <string name="home_status_not_authorized">未授权</string>
+    <string name="home_status_disabled">已关闭</string>
+    <string name="home_status_fault">故障</string>
+    <string name="home_status_reason_available">文本扩展服务正在运行。</string>
+    <string name="home_status_reason_not_authorized">需要无障碍权限。</string>
+    <string name="home_status_reason_disabled">无障碍服务已关闭。</string>
+    <string name="home_status_reason_fault">无障碍已授权，但服务未运行。</string>
+    <string name="home_action_authorize">授权</string>
+    <string name="home_action_open">开启</string>
+    <string name="home_action_fix">修复</string>
+    <string name="home_action_test">测试</string>
+    <string name="home_action_create_rule">创建规则</string>
+    <string name="home_action_import_rule">导入或安装规则</string>
+    <string name="home_quick_start_title">快速开始</string>
+    <string name="home_quick_start_step_authorize">授权</string>
+    <string name="home_quick_start_step_create">创建或导入规则</string>
+    <string name="home_quick_start_step_verify">验证</string>
+    <string name="home_service_a11y">无障碍服务</string>
+    <string name="home_service_a11y_running">运行中</string>
+    <string name="home_service_a11y_fault">故障</string>
+    <string name="home_service_a11y_off">已关闭</string>
+    <string name="home_service_a11y_unauthorized">未授权</string>
+    <string name="home_service_notification">常驻通知</string>
+    <string name="home_service_notification_subtitle">显示运行状态</string>
+    <string name="home_permission_restricted_title">检测到权限受限制，请前往解除。</string>
+    <string name="home_permission_restricted_action">解除限制</string>
+
+    <!-- Expansion workbench -->
+    <string name="expansion_title">文本扩展</string>
+    <string name="expansion_status_running">运行中</string>
+    <string name="expansion_status_stopped">已停止</string>
+    <string name="expansion_rules_loaded">已加载 %d 条规则</string>
+    <string name="expansion_preview_title">实时匹配预览</string>
+    <string name="expansion_preview_hint">在下方输入文本，查看哪条规则会被触发（仅预览，不实际替换）。</string>
+    <string name="expansion_preview_input_label">输入文本</string>
+    <string name="expansion_preview_input_placeholder">例如：输入 :eml 查看匹配结果</string>
+    <string name="expansion_preview_no_match">无匹配规则</string>
+    <string name="expansion_preview_match_format">触发：%1$s\n→ %2$s</string>
+    <string name="expansion_preview_regex_format">正则：%1$s\n→ %2$s</string>
+    <string name="expansion_history_title">扩展历史</string>
+    <string name="expansion_history_clear">清空</string>
+    <string name="expansion_history_clear_confirm">清空所有扩展历史？</string>
+    <string name="expansion_usage_title">使用说明</string>
+    <string name="expansion_entry_rules">规则</string>
+    <string name="expansion_entry_files">文件</string>
+    <string name="expansion_entry_global_vars">全局变量</string>
+    <string name="expansion_entry_package_store">包商店</string>
+    <string name="expansion_empty_rules_title">暂无规则</string>
+    <string name="expansion_empty_rules_subtitle">创建第一条规则或从包商店安装。</string>
+    <string name="expansion_action_create_rule">创建规则</string>
+    <string name="expansion_action_install_rule">安装规则</string>
+
+    <!-- Match list -->
+    <string name="match_list_title">规则</string>
+    <string name="match_list_title_with_count">规则（%1$d）</string>
+    <string name="match_list_search_hint">搜索触发词 / 替换内容 / 备注</string>
+    <string name="match_list_no_matches">无匹配规则</string>
+    <string name="match_list_clear_search">清除搜索</string>
+    <string name="match_list_empty_title">暂无规则</string>
+    <string name="match_list_empty_subtitle">点击右下角 + 新建</string>
+    <string name="match_list_delete_snackbar">已删除规则</string>
+    <string name="match_list_deleted">已删除规则</string>
+    <string name="match_list_filter_all_files">全部文件</string>
+    <string name="match_list_results_format">%1$d / %2$d</string>
+    <string name="match_new_select_file_title">选择目标文件</string>
+    <string name="match_new_default_file">默认</string>
+
+    <!-- Match editor -->
+    <string name="match_editor_title_new">新建规则</string>
+    <string name="match_editor_title_edit">编辑规则</string>
+    <string name="match_editor_tab_basic">基础</string>
+    <string name="match_editor_tab_advanced">高级</string>
+    <string name="match_editor_section_trigger">触发词</string>
+    <string name="match_editor_trigger_mode_plain">普通触发</string>
+    <string name="match_editor_trigger_mode_regex">正则触发</string>
+    <string name="match_editor_prefix_label">触发前缀</string>
+    <string name="match_editor_trigger_label">触发词</string>
+    <string name="match_editor_trigger_placeholder">每行一个，如 eml</string>
+    <string name="match_editor_trigger_helper">多个触发词请每行一个，全部触发同一规则。</string>
+    <string name="match_editor_regex_label">正则表达式</string>
+    <string name="match_editor_regex_placeholder">如：\b\d{4}-\d{2}-\d{2}\b</string>
+    <string name="match_editor_replace_label">替换为</string>
+    <string name="match_editor_replace_placeholder">如：my@email.com，支持 {{var}} 变量和 $|$ 光标标记</string>
+    <string name="match_editor_section_word_boundary">单词边界</string>
+    <string name="match_editor_word_boundary_full">完整单词匹配</string>
+    <string name="match_editor_word_boundary_left">仅检查左边界</string>
+    <string name="match_editor_word_boundary_right">仅检查右边界</string>
+    <string name="match_editor_section_advanced">高级</string>
+    <string name="match_editor_propagate_case">传播触发词大小写</string>
+    <string name="match_editor_label">备注</string>
+    <string name="match_editor_section_vars">规则变量（%1$d）</string>
+    <string name="match_editor_add_var">添加</string>
+    <string name="match_editor_syntax_help">语法提示</string>
+    <string name="match_editor_unsaved_title">未保存的修改</string>
+    <string name="match_editor_unsaved_message">放弃修改、继续编辑还是保存？</string>
+    <string name="match_editor_unsaved_discard">放弃</string>
+    <string name="match_editor_unsaved_keep">继续编辑</string>
+    <string name="match_editor_error_empty_trigger">触发词不能为空</string>
+    <string name="match_editor_error_empty_regex">正则表达式不能为空</string>
+    <string name="match_editor_error_invalid_regex">正则表达式无效</string>
+    <string name="match_editor_error_duplicate_trigger">触发词已存在</string>
+    <string name="match_editor_error_empty_replace">替换文本不能为空</string>
+    <string name="match_editor_save_failed">保存失败：%1$s</string>
+
+    <!-- Files -->
+    <string name="files_title">文件</string>
+    <string name="files_title_with_count">文件（%1$d）</string>
+    <string name="files_empty_title">暂无 YAML 文件</string>
+    <string name="files_empty_subtitle">新建文件或导入 YAML。</string>
+    <string name="files_action_create">新建文件</string>
+    <string name="files_action_import">导入 YAML</string>
+    <string name="files_action_export">导出</string>
+    <string name="files_action_sync">同步设置</string>
+    <string name="files_workspace_path">工作区：%1$s</string>
+    <string name="files_copy_path">复制路径</string>
+    <string name="files_create_dialog_title">新建规则文件</string>
+    <string name="files_create_name_hint">文件名（不含扩展名）</string>
+    <string name="files_create_name_invalid">只允许字母、数字、下划线和连字符</string>
+    <string name="files_create_extension_format">文件将保存为 %1$s.yml</string>
+    <string name="files_delete_title">删除文件</string>
+    <string name="files_delete_message">删除文件「%1$s」？</string>
+    <string name="files_delete_impact">该文件包含 %1$d 条规则，删除后不可恢复。</string>
+    <string name="files_imported">已导入 %1$s</string>
+    <string name="files_import_failed">导入失败：%1$s</string>
+    <string name="files_exported">已导出</string>
+    <string name="files_export_failed">导出失败：%1$s</string>
+    <string name="files_import_conflict_title">文件已存在</string>
+    <string name="files_import_conflict_message">「%1$s」已存在。覆盖、重命名还是取消？</string>
+    <string name="files_import_conflict_overwrite">覆盖</string>
+    <string name="files_import_conflict_rename">重命名</string>
+    <string name="files_rules_count">%1$d 条规则</string>
+    <string name="files_vars_count">%1$d 个变量</string>
+    <string name="files_rules_and_vars_count">%1$d 条规则，%2$d 个变量</string>
+
+    <!-- Global variables -->
+    <string name="global_vars_title">全局变量</string>
+    <string name="global_vars_title_with_count">全局变量（%1$d）</string>
+    <string name="global_vars_empty_title">暂无全局变量</string>
+    <string name="global_vars_empty_subtitle">全局变量对所有规则的 {{name}} 占位符生效。</string>
+    <string name="global_vars_no_file_hint">先创建规则文件，再添加全局变量。</string>
+    <string name="global_vars_delete_title">删除变量</string>
+    <string name="global_vars_delete_message">删除全局变量「%1$s」？</string>
+    <string name="global_vars_in_use_warning">该变量正被 %1$d 条规则引用。</string>
+    <string name="var_editor_name_hint">变量名，如 name 或 date_today</string>
+    <string name="var_editor_type">类型</string>
+    <string name="var_editor_echo_value">固定文本</string>
+    <string name="var_editor_date_format">格式（strftime）</string>
+    <string name="var_editor_date_offset">偏移秒数</string>
+    <string name="var_editor_random_min">最小值</string>
+    <string name="var_editor_random_max">最大值</string>
+    <string name="var_editor_choice_values">选项（每行一个）</string>
+    <string name="var_editor_no_params">该类型无需额外参数</string>
+
+    <!-- Sync -->
+    <string name="sync_title">同步设置</string>
+    <string name="sync_method">同步方式</string>
+    <string name="sync_method_none">不同步</string>
+    <string name="sync_method_local">本地文件夹</string>
+    <string name="sync_method_webdav">WebDAV</string>
+    <string name="sync_local_path">文件夹路径</string>
+    <string name="sync_webdav_url">WebDAV URL</string>
+    <string name="sync_username">用户名</string>
+    <string name="sync_password">密码</string>
+    <string name="sync_show_password">显示密码</string>
+    <string name="sync_hide_password">隐藏密码</string>
+    <string name="sync_conflict_strategy">冲突策略</string>
+    <string name="sync_conflict_last_write_wins">以最新修改为准</string>
+    <string name="sync_conflict_keep_both">保留两份（加 .conflict 后缀）</string>
+    <string name="sync_wifi_only">仅 Wi-Fi 同步</string>
+    <string name="sync_auto_push">保存后自动推送</string>
+    <string name="sync_test">测试连接</string>
+    <string name="sync_testing">测试中…</string>
+    <string name="sync_test_success">连接成功</string>
+    <string name="sync_test_failed">连接失败</string>
+    <string name="sync_push">推送</string>
+    <string name="sync_pull">拉取</string>
+    <string name="sync_both">双向同步</string>
+    <string name="sync_push_confirm">将本地文件推送到远端？这可能会覆盖远端文件。</string>
+    <string name="sync_pull_confirm">将远端文件拉取到本地？这可能会覆盖本地文件。</string>
+    <string name="sync_both_confirm">双向同步可能产生冲突，是否继续？</string>
+    <string name="sync_result_format">%1$s 完成：上传 %2$d 个，下载 %3$d 个，冲突 %4$d 个</string>
+    <string name="sync_status">状态：%1$s</string>
+
+    <!-- Settings -->
+    <string name="settings_title">设置</string>
+    <string name="settings_section_appearance">外观</string>
+    <string name="settings_section_input">输入体验</string>
+    <string name="settings_section_sync_backup">同步与备份</string>
+    <string name="settings_section_advanced">高级</string>
+    <string name="settings_section_support">支持</string>
+    <string name="settings_dynamic_color">动态配色</string>
+    <string name="settings_dynamic_color_subtitle">使用系统配色方案</string>
+    <string name="settings_search_trigger">快速搜索触发词</string>
+    <string name="settings_search_trigger_disabled">已禁用</string>
+    <string name="settings_search_trigger_hint">留空可禁用，默认 :s</string>
+    <string name="settings_search_trigger_description">在任意输入框输入此触发词后弹出搜索悬浮窗。</string>
+    <string name="settings_trigger_prefix">默认触发前缀</string>
+    <string name="settings_trigger_prefix_hint">如 : 或 =，留空表示无</string>
+    <string name="settings_trigger_prefix_description">未显式设置前缀的新规则与文件将继承此值。修改后会作用于所有继承该值的规则。</string>
+    <string name="settings_advanced">高级设置</string>
+    <string name="settings_advanced_subtitle">Shizuku / HTTP 服务</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_help">帮助</string>
+    <string name="settings_privacy">隐私</string>
+    <string name="settings_open_source">开源协议</string>
+
+    <!-- Auth -->
+    <string name="auth_a11y_title">无障碍授权</string>
+    <string name="auth_a11y_basic_title">基础</string>
+    <string name="auth_a11y_basic_summary">授予「无障碍权限」。无障碍关闭后需重新授权。</string>
+    <string name="auth_a11y_basic_granted">已持有「无障碍权限」</string>
+    <string name="auth_a11y_basic_manual">手动授权</string>
+    <string name="auth_a11y_enhanced_title">增强</string>
+    <string name="auth_a11y_enhanced_summary">授予「写入安全设置权限」，应用可自行控制无障碍开关。</string>
+    <string name="auth_a11y_enhanced_granted">已持有「写入安全设置权限」</string>
+    <string name="auth_a11y_shizuku">Shizuku 授权</string>
+    <string name="auth_a11y_command">命令授权</string>
+    <string name="auth_a11y_command_steps">1. 有一台安装了 adb 的电脑。\n2. 手机开启调试模式后连接电脑授权调试。\n3. 在电脑 cmd/pwsh 中运行如下命令。</string>
+    <string name="auth_a11y_command_copied">命令已复制</string>
+    <string name="auth_a11y_command_failed">运行后授权失败？</string>
+    <string name="auth_a11y_return_check">从系统设置返回后，已自动检查无障碍状态。</string>
+    <string name="action_close">关闭</string>
+
+    <!-- HTTP / Advanced -->
+    <string name="advanced_title">高级设置</string>
+    <string name="advanced_shizuku">Shizuku</string>
+    <string name="advanced_shizuku_enable">启用优化</string>
+    <string name="advanced_shizuku_enable_subtitle">提升权限优化体验</string>
+    <string name="advanced_shizuku_unauthorized">未授权，点击授权</string>
+    <string name="advanced_http">HTTP</string>
+    <string name="advanced_http_service">HTTP 服务</string>
+    <string name="advanced_http_service_subtitle">在浏览器中连接调试</string>
+    <string name="advanced_http_url_hint">点击下方链接即可连接</string>
+    <string name="advanced_http_port">服务端口</string>
+    <string name="advanced_http_port_range">请输入 %1$d 到 %2$d 的整数</string>
+    <string name="advanced_http_port_invalid">端口无效</string>
+    <string name="advanced_http_start_failed">HTTP 服务启动失败：%1$s</string>
+
+    <!-- Empty states / messages -->
+    <string name="empty_no_data">暂无数据</string>
+    <string name="loading">加载中…</string>
+    <string name="error_generic">出错了</string>
+    <string name="error_retry">重试</string>
+    <string name="snackbar_dismiss">关闭</string>
+</resources>

@@ -145,7 +145,7 @@ class ShizukuContext(
     }
 }
 
-private val defaultShizukuContext by lazy {
+internal val defaultShizukuContext by lazy {
     ShizukuContext(
         serviceWrapper = null,
         packageManager = null,
@@ -206,10 +206,11 @@ private fun updateShizukuBinder() = updateBinderMutex.launchTry(appScope, Dispat
         }
     } else if (shizukuContextFlow.value.ok) {
         val willRelaunch = uiAutomationFlow.value != null && !shizukuGrantedState.updateAndGet()
-        if (willRelaunch) {
-            // 需要重启应用让系统释放 UiAutomation
+        if (willRelaunch && !isActivityVisible) {
+            // 后台时 kill 以释放 UiAutomation
             killRelaunchApp()
         } else {
+            // 前台时避免重启应用导致回到首页并重新弹出权限受限窗
             uiAutomationFlow.value?.shutdown(true)
             shizukuContextFlow.value.destroy()
             shizukuContextFlow.value = defaultShizukuContext
@@ -241,6 +242,9 @@ fun initShizuku() {
     Shizuku.addBinderDeadListener {
         LogUtils.d("Shizuku.addBinderDeadListener")
         shizukuGrantedState.stateFlow.value = false
+        shizukuContextFlow.value.destroy()
+        shizukuContextFlow.value = defaultShizukuContext
+        uiAutomationFlow.value?.shutdown(true)
     }
     appScope.launchTry {
         shizukuUsedFlow.collect { updateShizukuBinder() }

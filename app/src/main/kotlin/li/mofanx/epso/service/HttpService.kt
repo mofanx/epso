@@ -6,6 +6,7 @@ import android.util.Log
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.hooks.CallFailed
@@ -17,11 +18,13 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.httpMethod
+import io.ktor.server.request.receive
 import io.ktor.server.request.uri
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +33,8 @@ import kotlinx.serialization.Serializable
 import li.mofanx.epso.data.AppInfo
 import li.mofanx.epso.data.DeviceInfo
 import li.mofanx.epso.data.selfAppInfo
+import li.mofanx.epso.expansion.Match
+import li.mofanx.epso.expansion.MatchStore
 import li.mofanx.epso.notif.StopServiceReceiver
 import li.mofanx.epso.notif.httpNotif
 import li.mofanx.epso.store.storeFlow
@@ -44,6 +49,7 @@ import li.mofanx.epso.util.mapState
 import li.mofanx.epso.util.startForegroundServiceByClass
 import li.mofanx.epso.util.stopServiceByClass
 import li.mofanx.epso.util.toast
+import java.util.UUID
 
 
 class HttpService : Service(), OnSimpleLife by DefaultSimpleLifeImpl() {
@@ -66,9 +72,11 @@ class HttpService : Service(), OnSimpleLife by DefaultSimpleLifeImpl() {
             }
         }
         onDestroyed {
+            httpServerFlow.value?.stop()
             httpServerFlow.value = null
         }
         onCreated {
+            ensureApiToken()
             httpNotif.notifyService()
             scope.launchTry(Dispatchers.IO) {
                 httpServerPortFlow.collect { port ->
@@ -103,8 +111,24 @@ class HttpService : Service(), OnSimpleLife by DefaultSimpleLifeImpl() {
         val httpServerFlow = MutableStateFlow<ServerType?>(null)
         val isRunning = MutableStateFlow(false)
         val localNetworkIpsFlow = MutableStateFlow(emptyList<String>())
-        fun stop() = stopServiceByClass(HttpService::class)
-        fun start() = startForegroundServiceByClass(HttpService::class)
+        fun stop() {
+            httpServerFlow.value?.stop()
+            stopServiceByClass(HttpService::class)
+        }
+        fun start() {
+            ensureApiToken()
+            startForegroundServiceByClass(HttpService::class)
+        }
+
+        fun ensureApiToken(): String {
+            val existing = storeFlow.value.httpApiToken
+            if (existing.isNotBlank()) return existing
+            return regenerateApiToken()
+        }
+
+        fun regenerateApiToken(): String = UUID.randomUUID().toString().replace("-", "").also { token ->
+            storeFlow.value = storeFlow.value.copy(httpApiToken = token)
+        }
     }
 }
 
@@ -122,16 +146,112 @@ data class ServerInfo(
     val appInfo: AppInfo = selfAppInfo
 )
 
+@Serializable
+data class ApiStatus(
+    val server: ServerInfo = ServerInfo(),
+    val expansionEnabled: Boolean,
+    val ruleCount: Int,
+    val fileCount: Int,
+)
+
+@Serializable
+data class ApiRule(
+    val file: String,
+    val triggers: List<String>,
+    val replace: String,
+    val regex: String,
+    val label: String?,
+)
+
+@Serializable
+data class ExpansionRequest(val enabled: Boolean)
+
+@Serializable
+data class ApiResult(val ok: Boolean = true)
+
+@Serializable
+data class CreateFileRequest(val path: String)
+
+@Serializable
+data class CreateRuleRequest(val file: String, val rule: Match)
+
+private val apiFilePathPattern = Regex("^[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*$")
+
 private fun createServer(port: Int) = embeddedServer(CIO, port) {
     install(getKtorCorsPlugin())
     install(getKtorErrorPlugin())
     install(ContentNegotiation) { json(keepNullJson) }
     routing {
-        get("/") { call.respondText(ContentType.Text.Html) { "<h1>HTTP Server Running</h1>" } }
-        route("/api") {
-            get("/getServerInfo") { call.respond(ServerInfo()) }
+        get("/") { call.respondText(ContentType.Text.Html) { "<h1>Epso LAN API</h1>" } }
+        route("/api/v1") {
+            get("/status") {
+                if (!call.isAuthorized()) return@get
+                call.respond(
+                    ApiStatus(
+                        expansionEnabled = storeFlow.value.enableExpansion,
+                        ruleCount = MatchStore.matchCount,
+                        fileCount = MatchStore.groups.value.size,
+                    )
+                )
+            }
+            get("/rules") {
+                if (!call.isAuthorized()) return@get
+                val workspace = MatchStore.getWorkspaceDir()
+                val rules = MatchStore.groups.value.flatMap { group ->
+                    val file = runCatching { java.io.File(group.sourceFile).relativeTo(workspace).path }
+                        .getOrDefault(group.sourceFile)
+                    group.matches.map { match ->
+                        ApiRule(file, match.allTriggers, match.replace, match.regex, match.label)
+                    }
+                }
+                call.respond(rules)
+            }
+            post("/files") {
+                if (!call.isAuthorized()) return@post
+                val request = call.receive<CreateFileRequest>()
+                if (!request.path.isSafeApiFilePath()) {
+                    call.respond(HttpStatusCode.BadRequest, RpcError(message = "invalid file path"))
+                    return@post
+                }
+                val file = MatchStore.createFile(request.path)
+                call.respond(mapOf("file" to file.name))
+            }
+            post("/rules") {
+                if (!call.isAuthorized()) return@post
+                val request = call.receive<CreateRuleRequest>()
+                if (!request.file.isSafeApiFilePath() || !request.rule.isValid) {
+                    call.respond(HttpStatusCode.BadRequest, RpcError(message = "invalid file path or rule"))
+                    return@post
+                }
+                val file = MatchStore.getWorkspaceDir().resolve("${request.file}.yml")
+                if (!file.exists()) MatchStore.createFile(request.file)
+                MatchStore.addMatch(file, request.rule)
+                call.respond(ApiResult())
+            }
+            post("/reload") {
+                if (!call.isAuthorized()) return@post
+                MatchStore.reload()
+                call.respond(ApiResult())
+            }
+            post("/expansion") {
+                if (!call.isAuthorized()) return@post
+                val request = call.receive<ExpansionRequest>()
+                storeFlow.value = storeFlow.value.copy(enableExpansion = request.enabled)
+                call.respond(ApiResult())
+            }
         }
     }
+}
+
+private fun String.isSafeApiFilePath(): Boolean = apiFilePathPattern.matches(this)
+
+private suspend fun io.ktor.server.application.ApplicationCall.isAuthorized(): Boolean {
+    val token = storeFlow.value.httpApiToken
+    val authorization = request.headers[HttpHeaders.Authorization]
+    val supplied = authorization?.removePrefix("Bearer ") ?: request.headers["X-Epso-Token"]
+    if (token.isNotBlank() && supplied == token) return true
+    respond(HttpStatusCode.Unauthorized, RpcError(message = "invalid or missing API token"))
+    return false
 }
 
 private fun getKtorCorsPlugin() = createApplicationPlugin(name = "KtorCorsPlugin") {

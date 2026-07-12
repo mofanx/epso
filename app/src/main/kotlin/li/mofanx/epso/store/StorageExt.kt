@@ -14,6 +14,7 @@ import li.mofanx.epso.util.json
 import li.mofanx.epso.util.privateStoreFolder
 import li.mofanx.epso.util.storeFolder
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -29,17 +30,23 @@ private fun readStoreText(
 }
 
 private fun writeStoreText(file: File, text: String) {
+    file.parentFile?.mkdirs()
     val tempFile = File("${file.absolutePath}.tmp")
     tempFile.outputStream().use {
         it.write(text.toByteArray(Charsets.UTF_8))
         it.fd.sync()
     }
-    Files.move(
-        tempFile.toPath(),
-        file.toPath(),
-        StandardCopyOption.REPLACE_EXISTING,
-        StandardCopyOption.ATOMIC_MOVE
-    )
+    try {
+        Files.move(
+            tempFile.toPath(),
+            file.toPath(),
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE
+        )
+    } catch (e: UnsupportedOperationException) {
+        if (file.exists() && !file.delete()) throw IOException("无法替换 ${file.name}", e)
+        if (!tempFile.renameTo(file)) throw IOException("无法写入 ${file.name}", e)
+    }
 }
 
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)

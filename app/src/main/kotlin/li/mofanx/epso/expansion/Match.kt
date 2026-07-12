@@ -23,6 +23,8 @@ data class Match(
     val triggers: List<String> = emptyList(),
     val replace: String = "",
     val regex: String = "",
+    /** 触发前缀：null 表示继承文件/全局设置，"" 表示无前缀，":" 等表示显式前缀 */
+    val prefix: String? = null,
     val word: Boolean = false,
     @SerialName("left_word")
     val leftWord: Boolean = false,
@@ -38,10 +40,16 @@ data class Match(
     val formFields: Map<String, FormField> = emptyMap(),
     val label: String? = null,
 ) {
-    /** 所有有效触发词（trigger + triggers 合并去重） */
+    /** 运行时解析后的有效前缀（不参与 equals/序列化） */
     @Transient
-    val allTriggers: List<String> =
-        (listOf(trigger) + triggers).filter { it.isNotEmpty() }.distinct()
+    var effectivePrefix: String? = null
+
+    /** 所有有效触发词（trigger + triggers 合并去重，并自动拼接 effectivePrefix/prefix） */
+    val allTriggers: List<String>
+        get() = (listOf(trigger) + triggers)
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .map { (effectivePrefix ?: prefix ?: "") + it }
 
     val isRegex: Boolean get() = regex.isNotEmpty()
     val isForm: Boolean get() = form != null

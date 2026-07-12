@@ -46,7 +46,6 @@ class MainViewModel : BaseViewModel(), OnSimpleLife by DefaultSimpleLifeImpl() {
     companion object {
         private var _instance: MainViewModel? = null
         val instance get() = _instance!!
-        private var tempTermsAccepted = false
     }
 
     init {
@@ -156,7 +155,7 @@ class MainViewModel : BaseViewModel(), OnSimpleLife by DefaultSimpleLifeImpl() {
         lastClickTabTime = t
     }
 
-    val termsAcceptedFlow = MutableStateFlow(tempTermsAccepted)
+    val termsAcceptedFlow = MutableStateFlow(storeFlow.value.termsAccepted)
 
     var tempCrashDataList = emptyList<CrashData>()
 
