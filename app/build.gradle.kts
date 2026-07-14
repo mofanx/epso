@@ -243,6 +243,7 @@ dependencies {
     implementation(libs.reorderable)
 
     implementation(libs.androidx.splashscreen)
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network)

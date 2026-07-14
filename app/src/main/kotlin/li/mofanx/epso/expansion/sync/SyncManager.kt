@@ -1,5 +1,6 @@
 package li.mofanx.epso.expansion.sync
 
+import li.mofanx.epso.store.SettingsStore
 import java.io.File
 
 // ──────────────────────────────────────────────────────────────
@@ -20,10 +21,25 @@ data class SyncConfig(
     val autoOnSave: Boolean = false,
 )
 
+fun SettingsStore.toSyncConfig(): SyncConfig {
+    val method = runCatching { SyncMethod.valueOf(syncMethod) }.getOrElse { SyncMethod.None }
+    val strategy = runCatching { ConflictStrategy.valueOf(syncConflictStrategy) }.getOrElse { ConflictStrategy.LastWriteWins }
+    return SyncConfig(
+        method = method,
+        uri = syncUri,
+        username = syncUsername,
+        password = syncPassword,
+        conflictStrategy = strategy,
+        wifiOnly = syncWifiOnly,
+        autoOnSave = syncAutoOnSave,
+    )
+}
+
 sealed class SyncResult {
     data class Success(
         val pushed: Int = 0,
         val pulled: Int = 0,
+        val deleted: Int = 0,
         val conflicts: Int = 0,
         val message: String = "",
     ) : SyncResult()
@@ -47,7 +63,7 @@ interface SyncManager {
     /** 拉取远端内容到本地工作区 */
     suspend fun pull(localDir: File): SyncResult
 
-    /** 双向合并（先 pull，再 push 本地新增） */
+    /** 双向合并 */
     suspend fun sync(localDir: File): SyncResult
 
     /** 测试连接可用性 */

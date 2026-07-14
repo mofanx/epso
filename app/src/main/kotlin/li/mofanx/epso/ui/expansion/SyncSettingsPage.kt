@@ -1,5 +1,6 @@
 package li.mofanx.epso.ui.expansion
 
+import android.net.Uri
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -195,14 +196,27 @@ fun SyncSettingsPage() {
                             OutlinedTextField(
                                 value = uri,
                                 onValueChange = { uri = it },
-                                label = { Text("文件夹路径") },
-                                placeholder = { Text("/sdcard/espanso/matches") },
+                                label = { Text("文件夹 URI") },
+                                placeholder = { Text("content://com.android.externalstorage.documents/tree/...") },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true,
+                                readOnly = true,
                             )
+                            Button(
+                                onClick = throttle {
+                                    scope.launch {
+                                        val dirUri = activity.pickDirectory()
+                                        if (dirUri != null) {
+                                            uri = dirUri.toString()
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("选择目录")
+                            }
                         }
                         Text(
-                            text = "输入绝对路径，或搭配 Syncthing 将该目录与其他设备同步",
+                            text = "点击按钮选择目录，应用需要通过系统授权才能访问外部存储",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -449,6 +463,7 @@ private fun SyncResult?.toDisplay(action: String): String = when (this) {
         append("✓ $action 完成")
         if (pushed > 0) append("，上传 $pushed 个")
         if (pulled > 0) append("，下载 $pulled 个")
+        if (deleted > 0) append("，删除 $deleted 个")
         if (conflicts > 0) append("，冲突 $conflicts 个")
     }
     is SyncResult.Failure -> "✗ $action 失败：$error"

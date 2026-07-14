@@ -8,8 +8,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import li.mofanx.epso.appScope
+import li.mofanx.epso.expansion.sync.SyncManager
+import li.mofanx.epso.expansion.sync.toSyncConfig
 import li.mofanx.epso.store.storeFlow
 import li.mofanx.epso.util.LogUtils
+import li.mofanx.epso.util.NetworkUtils
 import li.mofanx.epso.util.launchTry
 import li.mofanx.epso.util.matchesFolder
 import java.io.File
@@ -109,6 +112,7 @@ object MatchStore {
             }
         }
         reload()
+        autoPush()
     }
 
     /**
@@ -124,6 +128,7 @@ object MatchStore {
             }
         }
         reload()
+        autoPush()
     }
 
     /**
@@ -139,6 +144,7 @@ object MatchStore {
             }
         }
         reload()
+        autoPush()
     }
 
     /**
@@ -152,6 +158,7 @@ object MatchStore {
             }
         }
         reload()
+        autoPush()
     }
 
     // ── 文件管理 ────────────────────────────────────────────────────
@@ -162,6 +169,7 @@ object MatchStore {
     suspend fun createFile(name: String): File {
         val file = workspace.createFile(name)
         reload()
+        autoPush()
         return file
     }
 
@@ -171,12 +179,28 @@ object MatchStore {
     suspend fun deleteFile(file: File) {
         workspace.deleteFile(file)
         reload()
+        autoPush()
     }
 
     /**
      * 获取工作区目录
      */
     fun getWorkspaceDir(): File = workspace.dir
+
+    /**
+     * 保存后自动推送（在每次写操作后调用）
+     */
+    private fun autoPush() {
+        val store = storeFlow.value
+        if (!store.syncAutoOnSave || store.syncMethod == "None") return
+        if (store.syncWifiOnly && !NetworkUtils.isWifiConnected()) return
+        val config = store.toSyncConfig()
+        val manager = SyncManager(config) ?: return
+        val localDir = getWorkspaceDir()
+        appScope.launchTry(Dispatchers.IO) {
+            manager.push(localDir)
+        }
+    }
 
     // ── 包管理（Hub） ────────────────────────────────────────────
 
@@ -197,6 +221,7 @@ object MatchStore {
             }
         }
         reload()
+        autoPush()
     }
 
     /**
@@ -214,6 +239,7 @@ object MatchStore {
             }
         }
         reload()
+        autoPush()
     }
 
     // ── 私有 ────────────────────────────────────────────────────────

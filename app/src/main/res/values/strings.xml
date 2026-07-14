@@ -187,7 +187,7 @@
     <string name="sync_method_none">None</string>
     <string name="sync_method_local">Local folder</string>
     <string name="sync_method_webdav">WebDAV</string>
-    <string name="sync_local_path">Folder path</string>
+    <string name="sync_local_path">Folder URI</string>
     <string name="sync_webdav_url">WebDAV URL</string>
     <string name="sync_username">Username</string>
     <string name="sync_password">Password</string>

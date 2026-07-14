@@ -203,6 +203,20 @@ class MainActivity : ComponentActivity() {
         return u
     }
 
+    suspend fun pickDirectory(): Uri? {
+        val u = launcher.launchForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)).data?.data
+        if (u == null) {
+            toast("未选择目录")
+        } else {
+            // 持久化 URI 权限
+            contentResolver.takePersistableUriPermission(
+                u,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        return u
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         enableEdgeToEdge()

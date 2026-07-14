@@ -28,7 +28,7 @@ data class SettingsStore(
     // 同步配置
     /** 同步方式：None / LocalFolder / WebDav */
     val syncMethod: String = "None",
-    /** 同步目标 URI（本地文件夹路径 或 WebDAV URL） */
+    /** 同步目标 URI（本地文件夹 content:// URI 或 WebDAV URL） */
     val syncUri: String = "",
     /** WebDAV 用户名 */
     val syncUsername: String = "",
