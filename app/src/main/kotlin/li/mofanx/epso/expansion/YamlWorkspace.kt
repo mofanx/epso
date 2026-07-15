@@ -356,7 +356,7 @@ class YamlWorkspace(val dir: File) {
                 StandardCopyOption.REPLACE_EXISTING,
                 StandardCopyOption.ATOMIC_MOVE,
             )
-        } catch (e: UnsupportedOperationException) {
+        } catch (e: Exception) {
             if (file.exists() && !file.delete()) throw IOException("无法替换 ${file.name}", e)
             if (!tmp.renameTo(file)) throw IOException("无法写入 ${file.name}", e)
         }

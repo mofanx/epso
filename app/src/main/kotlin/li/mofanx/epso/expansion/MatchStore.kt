@@ -167,7 +167,11 @@ object MatchStore {
      * 创建新规则文件
      */
     suspend fun createFile(name: String): File {
-        val file = workspace.createFile(name)
+        val file = writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.createFile(name)
+            }
+        }
         reload()
         autoPush()
         return file
@@ -177,7 +181,11 @@ object MatchStore {
      * 删除规则文件
      */
     suspend fun deleteFile(file: File) {
-        workspace.deleteFile(file)
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.deleteFile(file)
+            }
+        }
         reload()
         autoPush()
     }
@@ -186,7 +194,11 @@ object MatchStore {
      * 创建空文件夹
      */
     suspend fun createFolder(name: String): File {
-        val folder = workspace.createFolder(name)
+        val folder = writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.createFolder(name)
+            }
+        }
         reload()
         autoPush()
         return folder

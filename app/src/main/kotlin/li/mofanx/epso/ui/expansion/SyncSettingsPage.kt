@@ -67,7 +67,7 @@ data object SyncSettingsRoute : NavKey
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SyncSettingsPage() {
+fun SyncSettingsPage(showBack: Boolean = true) {
     val mainVm = LocalMainViewModel.current
     val activity = LocalActivity.current as MainActivity
     val scope = rememberCoroutineScope()
@@ -127,11 +127,15 @@ fun SyncSettingsPage() {
             PerfTopAppBar(
                 scrollBehavior = scrollBehavior,
                 title = { Text("同步设置") },
-                navigationIcon = {
-                    PerfIconButton(
-                        imageVector = PerfIcon.ArrowBack,
-                        onClick = throttle { mainVm.popPage() },
-                    )
+                navigationIcon = if (showBack) {
+                    {
+                        PerfIconButton(
+                            imageVector = PerfIcon.ArrowBack,
+                            onClick = throttle { mainVm.popPage() },
+                        )
+                    }
+                } else {
+                    {}
                 },
                 actions = {
                     TextButton(onClick = throttle { saveSettings() }) { Text("保存") }

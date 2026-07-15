@@ -15,12 +15,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -38,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
@@ -86,6 +93,12 @@ fun FilesPage() {
     var showCreateDlg by remember { mutableStateOf(false) }
     var directoryVersion by remember { mutableStateOf(0) }
 
+    // 批量选择模式
+    var selectionMode by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var showBatchDeleteDlg by remember { mutableStateOf(false) }
+    var showBatchMoveDlg by remember { mutableStateOf(false) }
+
     // 导入：选择 YAML 文件 → 复制到工作区
     fun importYaml() {
         scope.launch {
@@ -99,7 +112,7 @@ fun FilesPage() {
 
                 val safeName = displayName.let {
                     if (it.endsWith(".yml") || it.endsWith(".yaml")) it else "$it.yml"
-                }
+                }.let { File(it).name }.takeIf { it.isNotBlank() } ?: "imported.yml"
                 val input = cr.openInputStream(uri) ?: return@launch
                 withContext(Dispatchers.IO) {
                     MatchStore.importFile(safeName, input)
@@ -155,43 +168,186 @@ fun FilesPage() {
         )
     }
 
+    var collapsedDirs by rememberSaveable { mutableStateOf(setOf<String>()) }
+    val treeItems by produceState(
+        initialValue = emptyList<FileTreeItem>(),
+        groups, workspaceDir, collapsedDirs, directoryVersion,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            buildFileTreeItems(groups, workspaceDir, collapsedDirs)
+        }
+    }
+
+    val selectedItems = remember(treeItems, selected) {
+        treeItems.filter { selected.contains(it.id) }
+    }
+    val selectedFiles = remember(selectedItems) {
+        selectedItems.filterIsInstance<FileTreeItem.File>().map { File(it.group.sourceFile) }
+    }
+    val selectedFolders = remember(selectedItems, workspaceDir) {
+        selectedItems.filterIsInstance<FileTreeItem.Dir>().map { File(workspaceDir, it.path) }
+    }
+    val visibleIds = remember(treeItems) { treeItems.map { it.id } }
+    val allSelected = remember(selected, treeItems) {
+        treeItems.isNotEmpty() && selected.containsAll(visibleIds)
+    }
+
+    fun onSelect(item: FileTreeItem) {
+        selected = if (selected.contains(item.id)) {
+            val new = selected - item.id
+            if (new.isEmpty()) selectionMode = false
+            new
+        } else {
+            selected + item.id
+        }
+    }
+
+    fun onToggleSelectAll(checked: Boolean) {
+        selected = if (checked) {
+            selected + visibleIds.toSet()
+        } else {
+            selected - visibleIds.toSet()
+        }
+        if (selected.isEmpty()) selectionMode = false
+    }
+
+    if (showBatchDeleteDlg) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteDlg = false },
+            title = { Text("删除确认") },
+            text = { Text("确认删除 ${selected.size} 个文件/文件夹？删除后不可恢复。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showBatchDeleteDlg = false
+                        val items = selectedItems
+                        scope.launch(Dispatchers.IO) {
+                            items.forEach { item ->
+                                when (item) {
+                                    is FileTreeItem.File -> MatchStore.deleteFile(File(item.group.sourceFile))
+                                    is FileTreeItem.Dir -> MatchStore.deleteFolder(File(workspaceDir, item.path))
+                                }
+                            }
+                            withContext(Dispatchers.Main) {
+                                selected = emptySet()
+                                selectionMode = false
+                                directoryVersion++
+                            }
+                        }
+                    },
+                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton({ showBatchDeleteDlg = false }) { Text("取消") }
+            },
+        )
+    }
+
+    if (showBatchMoveDlg && selectedFiles.isNotEmpty()) {
+        MoveFileDialog(
+            fileName = if (selectedFiles.size > 1) "选中的 ${selectedFiles.size} 个文件" else selectedFiles.first().name,
+            onDismiss = { showBatchMoveDlg = false },
+            onMove = { targetDir ->
+                showBatchMoveDlg = false
+                scope.launch(Dispatchers.IO) {
+                    val targetRoot = if (targetDir.isEmpty()) workspaceDir else workspaceDir.resolve(targetDir)
+                    selectedFiles.forEach { file ->
+                        if (targetRoot.resolve(file.name).absolutePath == file.absolutePath) return@forEach
+                        try {
+                            MatchStore.moveFile(file, targetDir)
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) { toast("移动失败：${e.message}") }
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        selected = emptySet()
+                        selectionMode = false
+                    }
+                }
+            },
+        )
+    }
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            PerfTopAppBar(
-                scrollBehavior = scrollBehavior,
-                title = { Text("文件管理 (${groups.size})") },
-                navigationIcon = {
-                    PerfIconButton(
-                        imageVector = PerfIcon.ArrowBack,
-                        onClick = throttle { mainVm.popPage() },
-                    )
-                },
-                actions = {
-                    PerfIconButton(
-                        imageVector = PerfIcon.Autorenew,
-                        contentDescription = "同步设置",
-                        onClickLabel = "前往同步设置",
-                        onClick = throttle { mainVm.navigatePage(SyncSettingsRoute) },
-                    )
-                    PerfIconButton(
-                        imageVector = PerfIcon.ArrowDownward,
-                        contentDescription = "导入 YAML",
-                        onClickLabel = "从文件导入规则",
-                        onClick = throttle { importYaml() },
-                    )
-                    PerfIconButton(
-                        imageVector = PerfIcon.Share,
-                        contentDescription = "导出",
-                        onClickLabel = "导出规则为 zip",
-                        onClick = throttle { exportWorkspace() },
-                    )
-                },
-            )
+            if (selectionMode) {
+                PerfTopAppBar(
+                    scrollBehavior = scrollBehavior,
+                    title = { Text("已选择 ${selected.size} 项") },
+                    navigationIcon = {
+                        PerfIconButton(
+                            imageVector = PerfIcon.Close,
+                            contentDescription = "取消选择",
+                            onClick = {
+                                selectionMode = false
+                                selected = emptySet()
+                            },
+                        )
+                    },
+                    actions = {
+                        Checkbox(
+                            checked = allSelected,
+                            onCheckedChange = { onToggleSelectAll(it) },
+                        )
+                    },
+                )
+            } else {
+                PerfTopAppBar(
+                    scrollBehavior = scrollBehavior,
+                    title = { Text("文件管理 (${groups.size})") },
+                    navigationIcon = {
+                        PerfIconButton(
+                            imageVector = PerfIcon.ArrowBack,
+                            onClick = throttle { mainVm.popPage() },
+                        )
+                    },
+                    actions = {
+                        PerfIconButton(
+                            imageVector = PerfIcon.Autorenew,
+                            contentDescription = "同步设置",
+                            onClickLabel = "前往同步设置",
+                            onClick = throttle { mainVm.navigatePage(SyncSettingsRoute) },
+                        )
+                        PerfIconButton(
+                            imageVector = PerfIcon.ArrowDownward,
+                            contentDescription = "导入 YAML",
+                            onClickLabel = "从文件导入规则",
+                            onClick = throttle { importYaml() },
+                        )
+                        PerfIconButton(
+                            imageVector = PerfIcon.Share,
+                            contentDescription = "导出",
+                            onClickLabel = "导出规则为 zip",
+                            onClick = throttle { exportWorkspace() },
+                        )
+                        PerfIconButton(
+                            imageVector = Icons.Outlined.SelectAll,
+                            contentDescription = "批量选择",
+                            onClickLabel = "进入批量选择模式",
+                            onClick = { selectionMode = true },
+                        )
+                    },
+                )
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = throttle { showCreateDlg = true }) {
-                PerfIcon(imageVector = PerfIcon.Add)
+            if (!selectionMode) {
+                FloatingActionButton(onClick = throttle { showCreateDlg = true }) {
+                    PerfIcon(imageVector = PerfIcon.Add)
+                }
+            }
+        },
+        bottomBar = {
+            if (selectionMode) {
+                BatchActionsBar(
+                    selectedFiles = selectedFiles,
+                    selectedFolders = selectedFolders,
+                    onDelete = { showBatchDeleteDlg = true },
+                    onMove = { showBatchMoveDlg = true },
+                    onDownload = { scope.launch(Dispatchers.IO) { downloadFiles(activity, selectedFiles) } },
+                    onShare = { scope.launch(Dispatchers.IO) { shareFiles(activity, selectedFiles) } },
+                )
             }
         },
     ) { paddingValues ->
@@ -200,16 +356,6 @@ fun FilesPage() {
                 .padding(paddingValues)
                 .fillMaxSize(),
         ) {
-            var collapsedDirs by rememberSaveable { mutableStateOf(setOf<String>()) }
-            val treeItems by produceState(
-                initialValue = emptyList<FileTreeItem>(),
-                groups, workspaceDir, collapsedDirs, directoryVersion,
-            ) {
-                value = withContext(Dispatchers.IO) {
-                    buildFileTreeItems(groups, workspaceDir, collapsedDirs)
-                }
-            }
-
             if (treeItems.isEmpty()) {
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -250,6 +396,9 @@ fun FilesPage() {
                             is FileTreeItem.File -> FileCard(
                                 group = item.group,
                                 modifier = Modifier.padding(start = (item.depth * 16).dp),
+                                isSelectionMode = selectionMode,
+                                isSelected = selected.contains(item.id),
+                                onSelect = { onSelect(item) },
                                 onClick = {
                                     mainVm.navigatePage(
                                         MatchListRoute(sourceFilePath = item.group.sourceFile)
@@ -272,6 +421,9 @@ fun FilesPage() {
                                 collapsed = item.collapsed,
                                 depth = item.depth,
                                 count = item.count,
+                                isSelectionMode = selectionMode,
+                                isSelected = selected.contains(item.id),
+                                onSelect = { onSelect(item) },
                                 onClick = {
                                     collapsedDirs = if (item.collapsed) {
                                         collapsedDirs - item.path
@@ -307,6 +459,154 @@ fun FilesPage() {
 }
 
 // ──────────────────────────────────────────────────────────────
+// 批量操作工具栏
+// ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun BatchActionsBar(
+    selectedFiles: List<File>,
+    selectedFolders: List<File>,
+    onDelete: () -> Unit,
+    onMove: () -> Unit,
+    onDownload: () -> Unit,
+    onShare: () -> Unit,
+) {
+    val fileOnlyEnabled = selectedFiles.isNotEmpty() && selectedFolders.isEmpty()
+    val hasSelection = selectedFiles.isNotEmpty() || selectedFolders.isNotEmpty()
+
+    BottomAppBar {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ActionButton(
+                icon = PerfIcon.Delete,
+                label = "删除",
+                enabled = hasSelection,
+                isDestructive = true,
+                onClick = onDelete,
+            )
+            ActionButton(
+                icon = PerfIcon.DriveFileMove,
+                label = "移动",
+                enabled = fileOnlyEnabled,
+                onClick = onMove,
+            )
+            ActionButton(
+                icon = PerfIcon.Download,
+                label = "下载",
+                enabled = fileOnlyEnabled,
+                onClick = onDownload,
+            )
+            ActionButton(
+                icon = PerfIcon.Share,
+                label = "分享",
+                enabled = fileOnlyEnabled,
+                onClick = onShare,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    isDestructive: Boolean = false,
+) {
+    val textColor = if (enabled) {
+        if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        PerfIconButton(
+            imageVector = icon,
+            enabled = enabled,
+            colors = if (isDestructive) {
+                IconButtonDefaults.iconButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                    disabledContentColor = MaterialTheme.colorScheme.error.copy(alpha = 0.38f),
+                )
+            } else {
+                IconButtonDefaults.iconButtonColors()
+            },
+            contentDescription = label,
+            onClick = throttle(onClick),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor,
+        )
+    }
+}
+
+private suspend fun downloadFiles(activity: MainActivity, files: List<File>) {
+    if (files.isEmpty()) {
+        withContext(Dispatchers.Main) { toast("未选择文件") }
+        return
+    }
+    try {
+        val uri = withContext(Dispatchers.Main) { activity.pickDirectory() } ?: return
+        var success = 0
+        withContext(Dispatchers.IO) {
+            val root = DocumentFile.fromTreeUri(activity, uri) ?: return@withContext
+            files.forEach { file ->
+                root.findFile(file.name)?.delete()
+                val dest = root.createFile("application/octet-stream", file.name) ?: return@forEach
+                activity.contentResolver.openOutputStream(dest.uri)?.use { out ->
+                    file.inputStream().use { input -> input.copyTo(out) }
+                } ?: return@forEach
+                success++
+            }
+        }
+        withContext(Dispatchers.Main) { toast("已下载 $success 个文件") }
+    } catch (e: Exception) {
+        withContext(Dispatchers.Main) { toast("下载失败：${e.message}") }
+    }
+}
+
+private suspend fun shareFiles(activity: MainActivity, files: List<File>) {
+    if (files.isEmpty()) {
+        withContext(Dispatchers.Main) { toast("未选择文件") }
+        return
+    }
+    try {
+        val cacheDir = activity.cacheDir.resolve("share").also { it.mkdirs() }
+        val uris = ArrayList<Uri>(files.size)
+        withContext(Dispatchers.IO) {
+            files.forEach { file ->
+                val cacheFile = cacheDir.resolve(file.name)
+                file.inputStream().use { input ->
+                    cacheFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                uris.add(
+                    androidx.core.content.FileProvider.getUriForFile(
+                        activity,
+                        "${activity.packageName}.provider",
+                        cacheFile,
+                    )
+                )
+            }
+        }
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "application/octet-stream"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        withContext(Dispatchers.Main) {
+            activity.startActivity(Intent.createChooser(intent, "分享 ${files.size} 个文件"))
+        }
+    } catch (e: Exception) {
+        withContext(Dispatchers.Main) { toast("分享失败：${e.message}") }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
 // 子组件
 // ──────────────────────────────────────────────────────────────
 
@@ -314,6 +614,9 @@ fun FilesPage() {
 private fun FileCard(
     group: MatchGroup,
     modifier: Modifier = Modifier,
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
     onClick: () -> Unit,
     onAddRule: () -> Unit,
     onDelete: (File) -> Unit,
@@ -375,7 +678,7 @@ private fun FileCard(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = surfaceCardColors,
-        onClick = throttle { onClick() },
+        onClick = throttle { if (isSelectionMode) onSelect() else onClick() },
     ) {
         Row(
             modifier = Modifier
@@ -383,6 +686,12 @@ private fun FileCard(
                 .padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (isSelectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onSelect() },
+                )
+            }
             PerfIcon(
                 imageVector = PerfIcon.Layers,
                 tint = MaterialTheme.colorScheme.primary,
@@ -404,48 +713,50 @@ private fun FileCard(
                 )
             }
 
-            Box {
-                PerfIconButton(
-                    imageVector = PerfIcon.MoreVert,
-                    onClick = { showMenu = true },
-                )
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("新增规则") },
-                        leadingIcon = { PerfIcon(PerfIcon.Add) },
-                        onClick = { showMenu = false; onAddRule() },
+            if (!isSelectionMode) {
+                Box {
+                    PerfIconButton(
+                        imageVector = PerfIcon.MoreVert,
+                        onClick = { showMenu = true },
                     )
-                    DropdownMenuItem(
-                        text = { Text("移动") },
-                        leadingIcon = { PerfIcon(PerfIcon.DriveFileMove) },
-                        onClick = { showMenu = false; showMoveDlg = true },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("分享") },
-                        leadingIcon = { PerfIcon(PerfIcon.Share) },
-                        onClick = {
-                            showMenu = false
-                            scope.launch(Dispatchers.IO) { shareFile(activity, file) }
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("下载") },
-                        leadingIcon = { PerfIcon(PerfIcon.Download) },
-                        onClick = {
-                            showMenu = false
-                            scope.launch(Dispatchers.IO) { downloadFile(activity, file) }
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("删除文件", color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = {
-                            PerfIcon(PerfIcon.Delete, tint = MaterialTheme.colorScheme.error)
-                        },
-                        onClick = { showMenu = false; showDeleteDlg = true },
-                    )
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("新增规则") },
+                            leadingIcon = { PerfIcon(PerfIcon.Add) },
+                            onClick = { showMenu = false; onAddRule() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("移动") },
+                            leadingIcon = { PerfIcon(PerfIcon.DriveFileMove) },
+                            onClick = { showMenu = false; showMoveDlg = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("分享") },
+                            leadingIcon = { PerfIcon(PerfIcon.Share) },
+                            onClick = {
+                                showMenu = false
+                                scope.launch(Dispatchers.IO) { shareFile(activity, file) }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("下载") },
+                            leadingIcon = { PerfIcon(PerfIcon.Download) },
+                            onClick = {
+                                showMenu = false
+                                scope.launch(Dispatchers.IO) { downloadFile(activity, file) }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("删除文件", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                PerfIcon(PerfIcon.Delete, tint = MaterialTheme.colorScheme.error)
+                            },
+                            onClick = { showMenu = false; showDeleteDlg = true },
+                        )
+                    }
                 }
             }
         }
@@ -458,6 +769,9 @@ private fun FolderCard(
     collapsed: Boolean,
     depth: Int,
     count: Int,
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -489,7 +803,7 @@ private fun FolderCard(
             .padding(start = (depth * 16).dp),
         shape = MaterialTheme.shapes.large,
         colors = surfaceCardColors,
-        onClick = throttle { onClick() },
+        onClick = throttle { if (isSelectionMode) onSelect() else onClick() },
     ) {
         Row(
             modifier = Modifier
@@ -497,6 +811,12 @@ private fun FolderCard(
                 .padding(horizontal = itemHorizontalPadding, vertical = itemVerticalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (isSelectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onSelect() },
+                )
+            }
             PerfIcon(
                 imageVector = PerfIcon.Folder,
                 tint = MaterialTheme.colorScheme.primary,
@@ -508,7 +828,7 @@ private fun FolderCard(
                     .padding(horizontal = 12.dp),
                 style = MaterialTheme.typography.bodyLarge,
             )
-            if (count > 0) {
+            if (count > 0 && !isSelectionMode) {
                 Text(
                     text = "($count 个文件)",
                     style = MaterialTheme.typography.bodySmall,
@@ -516,22 +836,24 @@ private fun FolderCard(
                     modifier = Modifier.padding(end = 8.dp),
                 )
             }
-            Box {
-                PerfIconButton(
-                    imageVector = PerfIcon.MoreVert,
-                    onClick = { showMenu = true },
-                )
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("删除文件夹", color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = {
-                            PerfIcon(PerfIcon.Delete, tint = MaterialTheme.colorScheme.error)
-                        },
-                        onClick = { showMenu = false; showDeleteDlg = true },
+            if (!isSelectionMode) {
+                Box {
+                    PerfIconButton(
+                        imageVector = PerfIcon.MoreVert,
+                        onClick = { showMenu = true },
                     )
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("删除文件夹", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                PerfIcon(PerfIcon.Delete, tint = MaterialTheme.colorScheme.error)
+                            },
+                            onClick = { showMenu = false; showDeleteDlg = true },
+                        )
+                    }
                 }
             }
         }

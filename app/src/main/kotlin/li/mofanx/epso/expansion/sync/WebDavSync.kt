@@ -14,11 +14,16 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.fromHttpToGmtDate
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import li.mofanx.epso.util.LogUtils
 import java.io.File
+import java.io.IOException
+import java.net.URLEncoder
 
 private const val TAG = "WebDavSync"
 
@@ -42,7 +47,10 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
         }
     }
 
-    private val client: HttpClient by lazy { HttpClient(OkHttp) }
+    private companion object {
+        val syncMutex = Mutex()
+        val client: HttpClient by lazy { HttpClient(OkHttp) }
+    }
 
     // ── 接口实现 ───────────────────────────────────────────────
 
@@ -53,20 +61,28 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
         }.getOrElse { false }
     }
 
-    override suspend fun push(localDir: File): SyncResult = withContext(Dispatchers.IO) {
+    override suspend fun push(localDir: File): SyncResult = syncMutex.withLock { doPush(localDir) }
+
+    override suspend fun pull(localDir: File): SyncResult = syncMutex.withLock { doPull(localDir) }
+
+    override suspend fun sync(localDir: File): SyncResult = syncMutex.withLock { doSync(localDir) }
+
+    // ── 私有辅助 ───────────────────────────────────────────────
+
+    private suspend fun doPush(localDir: File): SyncResult = withContext(Dispatchers.IO) {
         runCatching {
             ensureRemoteDir()
             var pushed = 0
             // 递归遍历整个工作区（含 packages/ 子目录）
             for (file in localDir.walkTopDown().filter { it.isFile }) {
                 val relative = file.relativeTo(localDir).path
-                val url = "$matchesUrl/$relative"
+                val url = "$matchesUrl/${encodePath(relative)}"
                 val resp = client.put(url) {
                     if (authHeader.isNotEmpty()) header("Authorization", authHeader)
-                    contentType(ContentType.Text.Plain)
+                    contentType(ContentType.Application.OctetStream)
                     setBody(file.readBytes())
                 }
-                if (resp.status.isSuccess() || resp.status == HttpStatusCode.Created || resp.status == HttpStatusCode.NoContent) {
+                if (resp.status.isSuccess()) {
                     pushed++
                 } else {
                     LogUtils.e(TAG, "Push failed for $relative: ${resp.status}")
@@ -76,13 +92,13 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
         }.getOrElse { SyncResult.Failure(it.message ?: "Push failed") }
     }
 
-    override suspend fun pull(localDir: File): SyncResult = withContext(Dispatchers.IO) {
+    private suspend fun doPull(localDir: File): SyncResult = withContext(Dispatchers.IO) {
         runCatching {
             val remoteFiles = listRemoteFiles()
             var pulled = 0
             var conflicts = 0
             for (path in remoteFiles) {
-                val resp = client.get("$matchesUrl/$path") {
+                val resp = client.get("$matchesUrl/${encodePath(path)}") {
                     if (authHeader.isNotEmpty()) header("Authorization", authHeader)
                 }
                 if (!resp.status.isSuccess()) continue
@@ -90,7 +106,9 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
                 val remoteBytes = resp.bodyAsBytes()
                 val localFile = localDir.resolve(path)
                 localFile.parentFile?.mkdirs()
-                val remoteModified = resp.headers["Last-Modified"]?.let { parseHttpDate(it) } ?: 0L
+                val remoteModified = resp.headers["Last-Modified"]?.let {
+                    runCatching { it.fromHttpToGmtDate().timestamp }.getOrDefault(0L)
+                } ?: 0L
 
                 if (!localFile.exists()) {
                     localFile.writeBytes(remoteBytes)
@@ -105,7 +123,10 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
                         ConflictStrategy.KeepBoth -> {
                             if (remoteModified > localFile.lastModified()) {
                                 val ts = System.currentTimeMillis()
-                                localFile.renameTo(localDir.resolve("${localFile.nameWithoutExtension}.conflict.$ts.yml"))
+                                val conflictFile = localFile.resolveSibling(
+                                    "${localFile.nameWithoutExtension}.conflict.$ts.${localFile.extension}"
+                                )
+                                localFile.copyTo(conflictFile, overwrite = true)
                                 localFile.writeBytes(remoteBytes); pulled++; conflicts++
                             }
                         }
@@ -116,17 +137,15 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
         }.getOrElse { SyncResult.Failure(it.message ?: "Pull failed") }
     }
 
-    override suspend fun sync(localDir: File): SyncResult = withContext(Dispatchers.IO) {
-        val pullResult = pull(localDir)
+    private suspend fun doSync(localDir: File): SyncResult = withContext(Dispatchers.IO) {
+        val pullResult = doPull(localDir)
         if (pullResult is SyncResult.Failure) return@withContext pullResult
-        val pushResult = push(localDir)
+        val pushResult = doPush(localDir)
         if (pushResult is SyncResult.Failure) return@withContext pushResult
         val p = pullResult as SyncResult.Success
         val q = pushResult as SyncResult.Success
         SyncResult.Success(pushed = q.pushed, pulled = p.pulled, conflicts = p.conflicts)
     }
-
-    // ── 私有辅助 ───────────────────────────────────────────────
 
     private suspend fun ensureRemoteDir() {
         try {
@@ -135,10 +154,10 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
                 if (authHeader.isNotEmpty()) header("Authorization", authHeader)
             }
             LogUtils.d(TAG, "MKCOL $matchesUrl: ${resp.status}")
-        } catch (_: Exception) { /* 已存在时服务器返回 405，忽略 */ }
+        } catch (_: Exception) { /* 网络/权限问题已在后续 PUT 中体现 */ }
     }
 
-    private suspend fun listRemoteFiles(): List<String> = try {
+    private suspend fun listRemoteFiles(): List<String> {
         val body = """<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:getlastmodified/></D:prop></D:propfind>"""
         val resp = client.request(matchesUrl) {
             method = HttpMethod("PROPFIND")
@@ -147,10 +166,14 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
             contentType(ContentType.Application.Xml)
             setBody(body)
         }
+        if (resp.status == HttpStatusCode.NotFound) return emptyList()
+        if (!resp.status.isSuccess()) {
+            throw IOException("PROPFIND failed: ${resp.status}")
+        }
         val text = resp.bodyAsText()
         // 保留完整相对路径（含子目录），去掉 URL 前缀和查询参数
         val basePath = matchesUrl.substringAfterLast('/')
-        Regex("""href>([^<]*\.ya?ml)<""", RegexOption.IGNORE_CASE)
+        return Regex("""href>([^<]*\.ya?ml)<""", RegexOption.IGNORE_CASE)
             .findAll(text)
             .map { it.groupValues[1] }
             .map { href ->
@@ -162,13 +185,12 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
             .filter { it.endsWith(".yml") || it.endsWith(".yaml") }
             .filter { it.isNotEmpty() }
             .toList()
-    } catch (e: Exception) {
-        LogUtils.e(TAG, "listRemoteFiles failed", e)
-        emptyList()
     }
 
-    private fun parseHttpDate(value: String): Long = try {
-        java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US)
-            .parse(value)?.time ?: 0L
-    } catch (_: Exception) { 0L }
+    private fun encodePath(path: String): String = path
+        .split('/')
+        .filter { it.isNotEmpty() }
+        .joinToString("/") {
+            URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+        }
 }
