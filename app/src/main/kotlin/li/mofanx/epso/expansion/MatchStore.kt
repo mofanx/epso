@@ -183,6 +183,55 @@ object MatchStore {
     }
 
     /**
+     * 创建空文件夹
+     */
+    suspend fun createFolder(name: String): File {
+        val folder = workspace.createFolder(name)
+        reload()
+        autoPush()
+        return folder
+    }
+
+    /**
+     * 导入外部 YAML 文件到工作区
+     */
+    suspend fun importFile(name: String, input: java.io.InputStream) {
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.importFile(name, input)
+            }
+        }
+        reload()
+        autoPush()
+    }
+
+    /**
+     * 删除文件夹（含递归内容）
+     */
+    suspend fun deleteFolder(folder: File) {
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.deleteFolder(folder)
+            }
+        }
+        reload()
+        autoPush()
+    }
+
+    /**
+     * 移动规则文件到目标文件夹，并同步更新引用它的 imports
+     */
+    suspend fun moveFile(sourceFile: File, targetDir: String) {
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.moveFile(sourceFile, targetDir, defaultPrefix)
+            }
+        }
+        reload()
+        autoPush()
+    }
+
+    /**
      * 获取工作区目录
      */
     fun getWorkspaceDir(): File = workspace.dir

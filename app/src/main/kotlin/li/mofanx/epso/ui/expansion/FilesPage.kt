@@ -1,7 +1,9 @@
 package li.mofanx.epso.ui.expansion
 
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.LocalActivity
+import androidx.documentfile.provider.DocumentFile
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,26 +90,23 @@ fun FilesPage() {
     fun importYaml() {
         scope.launch {
             val uri = activity.pickFile("application/octet-stream") ?: return@launch
-            withContext(Dispatchers.IO) {
-                try {
-                    val cr = activity.contentResolver
-                    val displayName = cr.query(uri, null, null, null, null)?.use { cursor ->
-                        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (cursor.moveToFirst() && idx >= 0) cursor.getString(idx) else null
-                    } ?: "imported.yml"
+            try {
+                val cr = activity.contentResolver
+                val displayName = cr.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && idx >= 0) cursor.getString(idx) else null
+                } ?: "imported.yml"
 
-                    val safeName = displayName.let {
-                        if (it.endsWith(".yml") || it.endsWith(".yaml")) it else "$it.yml"
-                    }
-                    val destFile = workspaceDir.resolve(safeName)
-                    cr.openInputStream(uri)?.use { input ->
-                        destFile.outputStream().use { output -> input.copyTo(output) }
-                    }
-                    MatchStore.reload()
-                    withContext(Dispatchers.Main) { toast("已导入 $safeName") }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) { toast("导入失败：${e.message}") }
+                val safeName = displayName.let {
+                    if (it.endsWith(".yml") || it.endsWith(".yaml")) it else "$it.yml"
                 }
+                val input = cr.openInputStream(uri) ?: return@launch
+                withContext(Dispatchers.IO) {
+                    MatchStore.importFile(safeName, input)
+                }
+                withContext(Dispatchers.Main) { toast("已导入 $safeName") }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { toast("导入失败：${e.message}") }
             }
         }
     }
@@ -121,7 +120,7 @@ fun FilesPage() {
                 withContext(Dispatchers.Main) {
                     val uri = androidx.core.content.FileProvider.getUriForFile(
                         activity,
-                        "${activity.packageName}.fileprovider",
+                        "${activity.packageName}.provider",
                         zipFile,
                     )
                     val intent = Intent(Intent.ACTION_SEND).apply {
@@ -144,7 +143,7 @@ fun FilesPage() {
                 showCreateDlg = false
                 if (isFolder) {
                     scope.launch(Dispatchers.IO) {
-                        File(workspaceDir, name).mkdirs()
+                        MatchStore.createFolder(name)
                         withContext(Dispatchers.Main) { directoryVersion++ }
                     }
                 } else {
@@ -280,6 +279,12 @@ fun FilesPage() {
                                         collapsedDirs + item.path
                                     }
                                 },
+                                onDelete = {
+                                    scope.launch(Dispatchers.IO) {
+                                        MatchStore.deleteFolder(File(workspaceDir, item.path))
+                                        withContext(Dispatchers.Main) { directoryVersion++ }
+                                    }
+                                },
                             )
                         }
                     }
@@ -315,8 +320,28 @@ private fun FileCard(
 ) {
     val file = remember(group.sourceFile) { File(group.sourceFile) }
     val fileName = file.name
+    val activity = LocalActivity.current as MainActivity
+    val scope = rememberCoroutineScope()
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteDlg by remember { mutableStateOf(false) }
+    var showMoveDlg by remember { mutableStateOf(false) }
+
+    if (showMoveDlg) {
+        MoveFileDialog(
+            fileName = fileName,
+            onDismiss = { showMoveDlg = false },
+            onMove = { targetDir ->
+                showMoveDlg = false
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        MatchStore.moveFile(file, targetDir)
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) { toast("移动失败：${e.message}") }
+                    }
+                }
+            },
+        )
+    }
 
     if (showDeleteDlg) {
         AlertDialog(
@@ -394,6 +419,27 @@ private fun FileCard(
                         onClick = { showMenu = false; onAddRule() },
                     )
                     DropdownMenuItem(
+                        text = { Text("移动") },
+                        leadingIcon = { PerfIcon(PerfIcon.DriveFileMove) },
+                        onClick = { showMenu = false; showMoveDlg = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("分享") },
+                        leadingIcon = { PerfIcon(PerfIcon.Share) },
+                        onClick = {
+                            showMenu = false
+                            scope.launch(Dispatchers.IO) { shareFile(activity, file) }
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("下载") },
+                        leadingIcon = { PerfIcon(PerfIcon.Download) },
+                        onClick = {
+                            showMenu = false
+                            scope.launch(Dispatchers.IO) { downloadFile(activity, file) }
+                        },
+                    )
+                    DropdownMenuItem(
                         text = { Text("删除文件", color = MaterialTheme.colorScheme.error) },
                         leadingIcon = {
                             PerfIcon(PerfIcon.Delete, tint = MaterialTheme.colorScheme.error)
@@ -413,7 +459,30 @@ private fun FolderCard(
     depth: Int,
     count: Int,
     onClick: () -> Unit,
+    onDelete: () -> Unit,
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+    var showDeleteDlg by remember { mutableStateOf(false) }
+
+    if (showDeleteDlg) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDlg = false },
+            title = { Text("删除文件夹") },
+            text = {
+                Text("确认删除文件夹「$name」？\n${if (count > 0) "该文件夹包含 $count 个文件/子目录，" else ""}删除后不可恢复。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDlg = false
+                    onDelete()
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDlg = false }) { Text("取消") }
+            },
+        )
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -447,12 +516,65 @@ private fun FolderCard(
                     modifier = Modifier.padding(end = 8.dp),
                 )
             }
-            PerfIcon(
-                imageVector = if (collapsed) PerfIcon.KeyboardArrowRight else PerfIcon.KeyboardArrowDown,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Box {
+                PerfIconButton(
+                    imageVector = PerfIcon.MoreVert,
+                    onClick = { showMenu = true },
+                )
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("删除文件夹", color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = {
+                            PerfIcon(PerfIcon.Delete, tint = MaterialTheme.colorScheme.error)
+                        },
+                        onClick = { showMenu = false; showDeleteDlg = true },
+                    )
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun MoveFileDialog(
+    fileName: String,
+    onDismiss: () -> Unit,
+    onMove: (String) -> Unit,
+) {
+    var targetDir by remember { mutableStateOf("") }
+    val normalizedDir = targetDir.trimEnd('/')
+    val isValid = normalizedDir.isEmpty() ||
+            normalizedDir.matches(Regex("^[a-zA-Z0-9_\\-]+(/[a-zA-Z0-9_\\-]+)*$"))
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("移动文件") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("将「$fileName」移动到目标文件夹：")
+                OutlinedTextField(
+                    value = targetDir,
+                    onValueChange = { targetDir = it },
+                    label = { Text("目标文件夹路径") },
+                    placeholder = { Text("留空=根目录，如 packages/work") },
+                    singleLine = true,
+                    isError = normalizedDir.isNotEmpty() && !isValid,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (isValid) onMove(normalizedDir) },
+                enabled = isValid,
+            ) { Text("移动") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
 }
 
 private sealed class FileTreeItem {
@@ -578,6 +700,53 @@ private fun zipWorkspaceDir(srcDir: File, destZip: File) {
             file.inputStream().use { it.copyTo(zos) }
             zos.closeEntry()
         }
+    }
+}
+
+private suspend fun shareFile(activity: MainActivity, file: File) {
+    try {
+        val cacheDir = activity.cacheDir.resolve("share").also { it.mkdirs() }
+        val cacheFile = cacheDir.resolve(file.name)
+        file.inputStream().use { input ->
+            cacheFile.outputStream().use { output -> input.copyTo(output) }
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            activity,
+            "${activity.packageName}.provider",
+            cacheFile,
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/octet-stream"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        withContext(Dispatchers.Main) {
+            activity.startActivity(Intent.createChooser(intent, "分享 ${file.name}"))
+        }
+    } catch (e: Exception) {
+        withContext(Dispatchers.Main) { toast("分享失败：${e.message}") }
+    }
+}
+
+private suspend fun downloadFile(activity: MainActivity, file: File) {
+    try {
+        val uri = withContext(Dispatchers.Main) { activity.pickDirectory() } ?: return
+        var success = false
+        withContext(Dispatchers.IO) {
+            val root = DocumentFile.fromTreeUri(activity, uri) ?: return@withContext
+            root.findFile(file.name)?.delete()
+            val dest = root.createFile("application/octet-stream", file.name) ?: return@withContext
+            val output = activity.contentResolver.openOutputStream(dest.uri) ?: return@withContext
+            output.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            }
+            success = true
+        }
+        if (success) {
+            withContext(Dispatchers.Main) { toast("已下载 ${file.name}") }
+        }
+    } catch (e: Exception) {
+        withContext(Dispatchers.Main) { toast("下载失败：${e.message}") }
     }
 }
 

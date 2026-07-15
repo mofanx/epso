@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CenterFocusWeak
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Memory
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Eco
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Equalizer
@@ -151,6 +153,8 @@ fun getIconDefaultDesc(imageVector: ImageVector): String? = when (imageVector) {
     PerfIcon.Edit -> "编辑"
     PerfIcon.Save -> "保存"
     PerfIcon.Delete -> "删除"
+    PerfIcon.Download -> "下载"
+    PerfIcon.DriveFileMove -> "移动"
     PerfIcon.Share -> "分享"
     PerfIcon.Settings -> "设置"
     PerfIcon.Close -> "关闭"
@@ -180,6 +184,8 @@ object PerfIcon {
     val Save get() = Icons.Outlined.Save
     val Share get() = Icons.Default.Share
     val Delete get() = Icons.Outlined.Delete
+    val Download get() = Icons.Default.Download
+    val DriveFileMove get() = Icons.AutoMirrored.Outlined.DriveFileMove
     val Eco get() = Icons.Outlined.Eco
     val Close get() = Icons.Default.Close
     val OpenInNew get() = Icons.AutoMirrored.Outlined.OpenInNew

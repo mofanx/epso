@@ -137,6 +137,88 @@ class YamlWorkspace(val dir: File) {
         }
     }
 
+    /**
+     * 在工作区创建空文件夹
+     */
+    suspend fun createFolder(name: String): File = withContext(Dispatchers.IO) {
+        dir.autoMkdir()
+        dir.resolve(name).autoMkdir()
+    }
+
+    /**
+     * 导入外部 YAML 文件到工作区
+     */
+    suspend fun importFile(name: String, input: java.io.InputStream): File = withContext(Dispatchers.IO) {
+        dir.autoMkdir()
+        val file = dir.resolve(name)
+        file.parentFile?.autoMkdir()
+        file.outputStream().use { output ->
+            input.use { it.copyTo(output) }
+        }
+        file
+    }
+
+    /**
+     * 删除文件夹（含递归内容）
+     */
+    suspend fun deleteFolder(folder: File) = withContext(Dispatchers.IO) {
+        folder.deleteRecursively()
+    }
+
+    /**
+     * 移动规则文件到目标子目录，并同步更新工作区中引用它的 imports 路径
+     */
+    suspend fun moveFile(source: File, targetDirPath: String, defaultPrefix: String): File = withContext(Dispatchers.IO) {
+        val sourceFile = source.absoluteFile
+        if (!sourceFile.exists() || sourceFile.isDirectory) {
+            throw IOException("Source is not a file: $sourceFile")
+        }
+        val targetDir = dir.resolve(targetDirPath).autoMkdir()
+        val newFile = targetDir.resolve(sourceFile.name)
+        if (newFile.absoluteFile == sourceFile.absoluteFile) return@withContext sourceFile
+        if (newFile.exists()) throw IOException("Target file already exists: $newFile")
+
+        val group = readFile(sourceFile, defaultPrefix)
+        val oldPath = sourceFile.canonicalFile
+
+        val updatedImports = group.imports.map { import ->
+            val resolved = resolveImportPath(sourceFile.parentFile ?: dir, import)
+            if (resolved.exists()) {
+                newRelativePath(resolved.canonicalFile, newFile.parentFile ?: dir, import)
+            } else {
+                import
+            }
+        }
+
+        // 先写入目标文件（保留原文件，确保写入失败仍可回退/重试）
+        writeFile(newFile, group.copy(imports = updatedImports))
+        val newFileCanonical = newFile.canonicalFile
+
+        // 更新工作区其它文件中引用该文件的路径
+        val allFiles = listAllYamlFiles(dir).filter { it != newFile }
+        for (f in allFiles) {
+            val g = readFile(f, defaultPrefix)
+            val newImports = g.imports.map { import ->
+                val resolved = resolveImportPath(f.parentFile ?: dir, import)
+                if (resolved.exists() && resolved.canonicalFile == oldPath) {
+                    newRelativePath(newFileCanonical, f.parentFile ?: dir, import)
+                } else {
+                    import
+                }
+            }
+            if (newImports != g.imports) {
+                writeFile(f, g.copy(imports = newImports))
+            }
+        }
+
+        // 其它文件引用更新完成后再删除原文件
+        if (!sourceFile.delete()) {
+            throw IOException("Cannot delete source file: $sourceFile")
+        }
+
+        newFile
+    }
+
     // ──────────────────────────────────────────────────────────────
     // 解析 / 序列化
     // ──────────────────────────────────────────────────────────────
@@ -284,6 +366,10 @@ class YamlWorkspace(val dir: File) {
 private fun File.autoMkdir(): File {
     if (!exists()) mkdirs()
     return this
+}
+
+private fun newRelativePath(target: File, base: File, fallback: String): String {
+    return runCatching { target.relativeTo(base).invariantSeparatorsPath }.getOrDefault(fallback)
 }
 
 internal fun File.isValidWorkspace(): Boolean {
