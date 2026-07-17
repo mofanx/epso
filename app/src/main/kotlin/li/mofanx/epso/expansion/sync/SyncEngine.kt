@@ -169,13 +169,13 @@ internal fun resolveAction(
     return null
 }
 
-private fun resolveConflict(
+internal fun resolveConflict(
     path: String,
     localEntry: SyncFileEntry?,
     remoteEntry: SyncFileEntry?,
     direction: Direction,
     strategy: ConflictStrategy,
-): SyncAction {
+): SyncAction.ResolveConflict {
     val localMtime = localEntry?.lastModified ?: 0L
     val remoteMtime = remoteEntry?.lastModified ?: 0L
 
@@ -200,6 +200,62 @@ private fun resolveConflict(
     }
 
     return SyncAction.ResolveConflict(path, winner, target, strategy)
+}
+
+// ──────────────────────────────────────────────────────────────
+// 路径排序：处理嵌套的文件/目录冲突
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * 根据当前扫描结果和同步方向，生成最终需要处理的路径列表。
+ *
+ * 处理规则：
+ * 1. 同一路径两侧类型冲突（文件 vs 目录）中，失败方为目录时，
+ *    该目录下的所有子路径本次跳过（ResolveConflict 会替换父目录，子项自然消失）。
+ * 2. 成功方为目录时，父路径必须排在子路径之前，否则子路径 copy 时目标父目录尚未创建/替换。
+ * 3. 其余路径按深度降序排列（删除时先删子项）。
+ */
+internal fun buildSyncPaths(
+    paths: Collection<String>,
+    localMap: Map<String, SyncFileEntry>,
+    remoteMap: Map<String, SyncFileEntry>,
+    direction: Direction,
+): List<String> {
+    val skipPrefixes = mutableSetOf<String>()
+    val dirWinPrefixes = mutableSetOf<String>()
+
+    for (path in paths) {
+        val localEntry = localMap[path]
+        val remoteEntry = remoteMap[path]
+        if (localEntry == null || remoteEntry == null) continue
+        if (localEntry.isDirectory == remoteEntry.isDirectory) continue
+
+        val action = resolveConflict(path, localEntry, remoteEntry, direction, ConflictStrategy.LastWriteWins)
+        val localIsDir = localEntry.isDirectory
+        val remoteIsDir = remoteEntry.isDirectory
+        when {
+            action.winner == Side.LOCAL && remoteIsDir -> skipPrefixes.add(path)
+            action.winner == Side.REMOTE && localIsDir -> skipPrefixes.add(path)
+            action.winner == Side.LOCAL && localIsDir -> dirWinPrefixes.add(path)
+            action.winner == Side.REMOTE && remoteIsDir -> dirWinPrefixes.add(path)
+        }
+    }
+
+    val filteredPaths = paths.filter { path ->
+        skipPrefixes.none { prefix ->
+            path != prefix && path.startsWith("$prefix/")
+        }
+    }
+
+    return filteredPaths.sortedWith { a, b ->
+        val aIsParentOfB = b.startsWith("$a/")
+        val bIsParentOfA = a.startsWith("$b/")
+        when {
+            dirWinPrefixes.contains(a) && aIsParentOfB -> -1
+            dirWinPrefixes.contains(b) && bIsParentOfA -> 1
+            else -> b.count { it == '/' }.compareTo(a.count { it == '/' })
+        }
+    }
 }
 
 // ──────────────────────────────────────────────────────────────

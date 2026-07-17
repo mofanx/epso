@@ -78,10 +78,12 @@ class LocalFolderSync(private val config: SyncConfig) : SyncManager {
             val counters = Counters()
             val failures = mutableListOf<String>()
 
-            val allPaths = (state.local.keys + state.remote.keys + localMap.keys + remoteMap.keys)
-                .distinct()
-                // 先处理深层路径（文件），再处理父目录；删除时子项先删，目录后删
-                .sortedByDescending { it.count { c -> c == '/' } }
+            val allPaths = buildSyncPaths(
+                (state.local.keys + state.remote.keys + localMap.keys + remoteMap.keys),
+                localMap,
+                remoteMap,
+                direction,
+            )
 
             val actions = allPaths.mapNotNull { path ->
                 val localEntry = localMap[path]

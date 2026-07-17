@@ -128,10 +128,12 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
                 val counters = Counters()
                 val failures = mutableListOf<String>()
 
-                val allPaths = (state.local.keys + state.remote.keys + localMap.keys + remoteMap.keys)
-                    .distinct()
-                    // 先处理深层路径，再处理目录
-                    .sortedByDescending { it.count { c -> c == '/' } }
+                val allPaths = buildSyncPaths(
+                    (state.local.keys + state.remote.keys + localMap.keys + remoteMap.keys),
+                    localMap,
+                    remoteMap,
+                    direction,
+                )
 
                 val actions = allPaths.mapNotNull { path ->
                     val localEntry = localMap[path]
@@ -518,7 +520,8 @@ class WebDavSync(private val config: SyncConfig) : SyncManager {
         if (!resp.status.isSuccess() && resp.status != HttpStatusCode.NotFound) {
             throw IOException("DELETE failed for $path: ${resp.status}")
         }
-        remoteMap.remove(path)
+        // 删除目录时同步清理 remoteMap 中的子项，避免 saveState 记录已不存在的路径
+        remoteMap.keys.removeAll { it == path || it.startsWith("$path/") }
         counters.deleted++
     }
 

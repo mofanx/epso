@@ -176,4 +176,44 @@ class SyncEngineTest {
         assertTrue(action is SyncAction.ResolveConflict)
         assertEquals(ConflictStrategy.KeepBoth, action.strategy)
     }
+
+    @Test
+    fun `buildSyncPaths 文件获胜时跳过目录子项`() {
+        val localMap = mapOf(
+            "base.yml" to entry("base.yml", 200, 10, "new"),
+        )
+        val remoteMap = mapOf(
+            "base.yml" to entry("base.yml", 100, 0, "", isDirectory = true),
+            "base.yml/child.txt" to entry("base.yml/child.txt", 100, 10, "old"),
+        )
+        val paths = listOf("base.yml", "base.yml/child.txt", "other.txt")
+        val result = buildSyncPaths(paths, localMap, remoteMap, Direction.PUSH)
+        assertEquals(listOf("base.yml", "other.txt"), result)
+    }
+
+    @Test
+    fun `buildSyncPaths 目录获胜时父路径排在子路径前`() {
+        val localMap = mapOf(
+            "base.yml" to entry("base.yml", 200, 0, "", isDirectory = true),
+            "base.yml/child.txt" to entry("base.yml/child.txt", 200, 10, "new"),
+        )
+        val remoteMap = mapOf(
+            "base.yml" to entry("base.yml", 100, 10, "old"),
+        )
+        val paths = listOf("base.yml/child.txt", "base.yml")
+        val result = buildSyncPaths(paths, localMap, remoteMap, Direction.PUSH)
+        assertEquals(listOf("base.yml", "base.yml/child.txt"), result)
+    }
+
+    @Test
+    fun `buildSyncPaths 非冲突路径仍按深度降序`() {
+        val localMap = mapOf(
+            "a/b/c.txt" to entry("a/b/c.txt", 100, 10, "abc"),
+            "a/b.txt" to entry("a/b.txt", 100, 10, "abc"),
+        )
+        val remoteMap = emptyMap<String, SyncFileEntry>()
+        val paths = listOf("a/b.txt", "a/b/c.txt")
+        val result = buildSyncPaths(paths, localMap, remoteMap, Direction.PUSH)
+        assertEquals(listOf("a/b/c.txt", "a/b.txt"), result)
+    }
 }
