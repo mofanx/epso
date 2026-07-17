@@ -51,15 +51,15 @@ class YamlWorkspaceTest {
     }
 
     @Test
-    fun `listFiles only returns yml files in root`() = runTest {
+    fun `listFiles returns all yml files recursively`() = runTest {
         ws.createFile("a")
         ws.createFile("b")
-        // create a non-yaml file — should not be listed
+        // create a non-yaml file — should not be listed by listFiles()
         tmpDir.resolve("readme.txt").writeText("hi")
-        // create a subdir yaml — should not be listed (only root)
+        // create a subdir yaml — listFiles() is recursive, so it should be included
         val sub = tmpDir.resolve("subdir").also { it.mkdirs() }
         sub.resolve("package.yml").writeText("")
-        assertEquals(2, ws.listFiles().size)
+        assertEquals(3, ws.listFiles().size)
     }
 
     // ── readFile / writeFile ─────────────────────────────────────────
@@ -223,5 +223,26 @@ class YamlWorkspaceTest {
         assertEquals(original.matches[0].trigger, restored.matches[0].trigger)
         assertEquals(original.matches[0].word, restored.matches[0].word)
         assertEquals(original.globalVars[0].name, restored.globalVars[0].name)
+    }
+
+    // ── copy / move non-YAML files ───────────────────────────────────
+
+    @Test
+    fun `copyFile copies non-yaml file as-is`() = runTest {
+        val script = tmpDir.resolve("script.js").also { it.writeText("console.log('hi')") }
+        val copied = ws.copyFile(script, "scripts", "")
+        assertTrue(copied.exists())
+        assertEquals("script.js", copied.name)
+        assertEquals("console.log('hi')", copied.readText())
+        assertEquals("scripts/script.js", copied.relativeTo(tmpDir).path.replace(File.separator, "/"))
+    }
+
+    @Test
+    fun `moveFile moves non-yaml file as-is`() = runTest {
+        val script = tmpDir.resolve("script.js").also { it.writeText("console.log('hi')") }
+        val moved = ws.moveFile(script, "scripts", "")
+        assertTrue(moved.exists())
+        assertFalse(script.exists())
+        assertEquals("console.log('hi')", moved.readText())
     }
 }

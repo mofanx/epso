@@ -38,6 +38,9 @@ object MatchStore {
     /** 序列化所有文件写入操作，防止并发 read-modify-write 竞争 */
     private val writeMutex = Mutex()
 
+    /** 序列化自动同步请求，避免多个写操作并发 push 导致状态文件竞争 */
+    private val autoPushMutex = Mutex()
+
     // ── 对外 StateFlow ──────────────────────────────────────────────
 
     /** 触发词 → Match 的扁平化字典（含正则规则，key 为 __regex__<pattern>） */
@@ -234,13 +237,61 @@ object MatchStore {
      * 移动规则文件到目标文件夹，并同步更新引用它的 imports
      */
     suspend fun moveFile(sourceFile: File, targetDir: String) {
-        writeMutex.withLock {
+        val newFile = writeMutex.withLock {
             withContext(Dispatchers.IO) {
                 workspace.moveFile(sourceFile, targetDir, defaultPrefix)
             }
         }
+        if (newFile.absoluteFile == sourceFile.absoluteFile) {
+            return
+        }
         reload()
         autoPush()
+    }
+
+    /**
+     * 复制规则文件到目标文件夹
+     */
+    suspend fun copyFile(sourceFile: File, targetDir: String): File {
+        val file = writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.copyFile(sourceFile, targetDir, defaultPrefix)
+            }
+        }
+        reload()
+        autoPush()
+        return file
+    }
+
+    /**
+     * 复制文件夹到目标目录
+     */
+    suspend fun copyFolder(sourceFolder: File, targetDir: String): File {
+        val folder = writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.copyFolder(sourceFolder, targetDir, defaultPrefix)
+            }
+        }
+        reload()
+        autoPush()
+        return folder
+    }
+
+    /**
+     * 移动文件夹到目标目录
+     */
+    suspend fun moveFolder(sourceFolder: File, targetDir: String): File {
+        val folder = writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                workspace.moveFolder(sourceFolder, targetDir, defaultPrefix)
+            }
+        }
+        if (folder.absoluteFile == sourceFolder.absoluteFile) {
+            return folder
+        }
+        reload()
+        autoPush()
+        return folder
     }
 
     /**
@@ -259,7 +310,9 @@ object MatchStore {
         val manager = SyncManager(config) ?: return
         val localDir = getWorkspaceDir()
         appScope.launchTry(Dispatchers.IO) {
-            manager.push(localDir)
+            autoPushMutex.withLock {
+                manager.push(localDir)
+            }
         }
     }
 

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.LocalActivity
 import androidx.documentfile.provider.DocumentFile
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SelectAll
@@ -97,6 +99,7 @@ fun FilesPage() {
     var selectionMode by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
     var showBatchDeleteDlg by remember { mutableStateOf(false) }
+    var showBatchCopyDlg by remember { mutableStateOf(false) }
     var showBatchMoveDlg by remember { mutableStateOf(false) }
 
     // 导入：选择 YAML 文件 → 复制到工作区
@@ -243,18 +246,76 @@ fun FilesPage() {
         )
     }
 
-    if (showBatchMoveDlg && selectedFiles.isNotEmpty()) {
-        MoveFileDialog(
-            fileName = if (selectedFiles.size > 1) "选中的 ${selectedFiles.size} 个文件" else selectedFiles.first().name,
+    if (showBatchCopyDlg && selectedItems.isNotEmpty()) {
+        val itemName = if (selectedItems.size > 1) {
+            "选中的 ${selectedItems.size} 个文件/文件夹"
+        } else {
+            when (val item = selectedItems.first()) {
+                is FileTreeItem.File -> File(item.group.sourceFile).name
+                is FileTreeItem.Dir -> item.name
+            }
+        }
+        TargetDirDialog(
+            title = "批量复制",
+            itemName = itemName,
+            actionLabel = "复制",
+            onDismiss = { showBatchCopyDlg = false },
+            onConfirm = { targetDir ->
+                showBatchCopyDlg = false
+                scope.launch(Dispatchers.IO) {
+                    selectedFiles.forEach { file ->
+                        try {
+                            MatchStore.copyFile(file, targetDir)
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) { toast("复制失败：${e.message}") }
+                        }
+                    }
+                    selectedFolders.forEach { folder ->
+                        try {
+                            MatchStore.copyFolder(folder, targetDir)
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) { toast("复制失败：${e.message}") }
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        selected = emptySet()
+                        selectionMode = false
+                        directoryVersion++
+                    }
+                }
+            },
+        )
+    }
+
+    if (showBatchMoveDlg && selectedItems.isNotEmpty()) {
+        val itemName = if (selectedItems.size > 1) {
+            "选中的 ${selectedItems.size} 个文件/文件夹"
+        } else {
+            when (val item = selectedItems.first()) {
+                is FileTreeItem.File -> File(item.group.sourceFile).name
+                is FileTreeItem.Dir -> item.name
+            }
+        }
+        TargetDirDialog(
+            title = "批量移动",
+            itemName = itemName,
+            actionLabel = "移动",
             onDismiss = { showBatchMoveDlg = false },
-            onMove = { targetDir ->
+            onConfirm = { targetDir ->
                 showBatchMoveDlg = false
                 scope.launch(Dispatchers.IO) {
-                    val targetRoot = if (targetDir.isEmpty()) workspaceDir else workspaceDir.resolve(targetDir)
                     selectedFiles.forEach { file ->
-                        if (targetRoot.resolve(file.name).absolutePath == file.absolutePath) return@forEach
+                        if (workspaceDir.resolve(targetDir).resolve(file.name).absolutePath == file.absolutePath) return@forEach
                         try {
                             MatchStore.moveFile(file, targetDir)
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) { toast("移动失败：${e.message}") }
+                        }
+                    }
+                    selectedFolders.forEach { folder ->
+                        if (workspaceDir.resolve(targetDir).resolve(folder.name).absolutePath == folder.absolutePath) return@forEach
+                        try {
+                            MatchStore.moveFolder(folder, targetDir)
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) { toast("移动失败：${e.message}") }
                         }
@@ -262,6 +323,7 @@ fun FilesPage() {
                     withContext(Dispatchers.Main) {
                         selected = emptySet()
                         selectionMode = false
+                        directoryVersion++
                     }
                 }
             },
@@ -344,6 +406,7 @@ fun FilesPage() {
                     selectedFiles = selectedFiles,
                     selectedFolders = selectedFolders,
                     onDelete = { showBatchDeleteDlg = true },
+                    onCopy = { showBatchCopyDlg = true },
                     onMove = { showBatchMoveDlg = true },
                     onDownload = { scope.launch(Dispatchers.IO) { downloadFiles(activity, selectedFiles) } },
                     onShare = { scope.launch(Dispatchers.IO) { shareFiles(activity, selectedFiles) } },
@@ -416,28 +479,51 @@ fun FilesPage() {
                                 },
                             )
 
-                            is FileTreeItem.Dir -> FolderCard(
-                                name = item.name,
-                                collapsed = item.collapsed,
-                                depth = item.depth,
-                                count = item.count,
-                                isSelectionMode = selectionMode,
-                                isSelected = selected.contains(item.id),
-                                onSelect = { onSelect(item) },
-                                onClick = {
-                                    collapsedDirs = if (item.collapsed) {
-                                        collapsedDirs - item.path
-                                    } else {
-                                        collapsedDirs + item.path
-                                    }
-                                },
-                                onDelete = {
-                                    scope.launch(Dispatchers.IO) {
-                                        MatchStore.deleteFolder(File(workspaceDir, item.path))
-                                        withContext(Dispatchers.Main) { directoryVersion++ }
-                                    }
-                                },
-                            )
+                            is FileTreeItem.Dir -> {
+                                val folder = File(workspaceDir, item.path)
+                                FolderCard(
+                                    name = item.name,
+                                    collapsed = item.collapsed,
+                                    depth = item.depth,
+                                    count = item.count,
+                                    isSelectionMode = selectionMode,
+                                    isSelected = selected.contains(item.id),
+                                    onSelect = { onSelect(item) },
+                                    onClick = {
+                                        collapsedDirs = if (item.collapsed) {
+                                            collapsedDirs - item.path
+                                        } else {
+                                            collapsedDirs + item.path
+                                        }
+                                    },
+                                    onCopy = { targetDir ->
+                                        scope.launch(Dispatchers.IO) {
+                                            try {
+                                                MatchStore.copyFolder(folder, targetDir)
+                                                withContext(Dispatchers.Main) { directoryVersion++ }
+                                            } catch (e: Exception) {
+                                                withContext(Dispatchers.Main) { toast("复制失败：${e.message}") }
+                                            }
+                                        }
+                                    },
+                                    onMove = { targetDir ->
+                                        scope.launch(Dispatchers.IO) {
+                                            try {
+                                                MatchStore.moveFolder(folder, targetDir)
+                                                withContext(Dispatchers.Main) { directoryVersion++ }
+                                            } catch (e: Exception) {
+                                                withContext(Dispatchers.Main) { toast("移动失败：${e.message}") }
+                                            }
+                                        }
+                                    },
+                                    onDelete = {
+                                        scope.launch(Dispatchers.IO) {
+                                            MatchStore.deleteFolder(folder)
+                                            withContext(Dispatchers.Main) { directoryVersion++ }
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                     item { Spacer(Modifier.height(80.dp)) }
@@ -467,6 +553,7 @@ private fun BatchActionsBar(
     selectedFiles: List<File>,
     selectedFolders: List<File>,
     onDelete: () -> Unit,
+    onCopy: () -> Unit,
     onMove: () -> Unit,
     onDownload: () -> Unit,
     onShare: () -> Unit,
@@ -476,8 +563,11 @@ private fun BatchActionsBar(
 
     BottomAppBar {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ActionButton(
@@ -488,9 +578,15 @@ private fun BatchActionsBar(
                 onClick = onDelete,
             )
             ActionButton(
+                icon = PerfIcon.ContentCopy,
+                label = "复制",
+                enabled = hasSelection,
+                onClick = onCopy,
+            )
+            ActionButton(
                 icon = PerfIcon.DriveFileMove,
                 label = "移动",
-                enabled = fileOnlyEnabled,
+                enabled = hasSelection,
                 onClick = onMove,
             )
             ActionButton(
@@ -623,21 +719,46 @@ private fun FileCard(
 ) {
     val file = remember(group.sourceFile) { File(group.sourceFile) }
     val fileName = file.name
+    val isYaml = file.extension.equals("yml", ignoreCase = true) || file.extension.equals("yaml", ignoreCase = true)
     val activity = LocalActivity.current as MainActivity
     val scope = rememberCoroutineScope()
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteDlg by remember { mutableStateOf(false) }
+    var showCopyDlg by remember { mutableStateOf(false) }
     var showMoveDlg by remember { mutableStateOf(false) }
 
+    if (showCopyDlg) {
+        TargetDirDialog(
+            title = "复制文件",
+            itemName = fileName,
+            actionLabel = "复制",
+            onDismiss = { showCopyDlg = false },
+            onConfirm = { targetDir ->
+                showCopyDlg = false
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        MatchStore.copyFile(file, targetDir)
+                        withContext(Dispatchers.Main) { toast("已复制") }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) { toast("复制失败：${e.message}") }
+                    }
+                }
+            },
+        )
+    }
+
     if (showMoveDlg) {
-        MoveFileDialog(
-            fileName = fileName,
+        TargetDirDialog(
+            title = "移动文件",
+            itemName = fileName,
+            actionLabel = "移动",
             onDismiss = { showMoveDlg = false },
-            onMove = { targetDir ->
+            onConfirm = { targetDir ->
                 showMoveDlg = false
                 scope.launch(Dispatchers.IO) {
                     try {
                         MatchStore.moveFile(file, targetDir)
+                        withContext(Dispatchers.Main) { toast("已移动") }
                     } catch (e: Exception) {
                         withContext(Dispatchers.Main) { toast("移动失败：${e.message}") }
                     }
@@ -678,7 +799,15 @@ private fun FileCard(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = surfaceCardColors,
-        onClick = throttle { if (isSelectionMode) onSelect() else onClick() },
+        onClick = throttle {
+            if (isSelectionMode) {
+                onSelect()
+            } else if (isYaml) {
+                onClick()
+            } else {
+                toast("非 YAML 规则文件，无法编辑")
+            }
+        },
     ) {
         Row(
             modifier = Modifier
@@ -706,8 +835,12 @@ private fun FileCard(
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    text = "${group.matches.size} 条规则" +
-                            if (group.globalVars.isNotEmpty()) "，${group.globalVars.size} 个全局变量" else "",
+                    text = if (isYaml) {
+                        "${group.matches.size} 条规则" +
+                            if (group.globalVars.isNotEmpty()) "，${group.globalVars.size} 个全局变量" else ""
+                    } else {
+                        "非 YAML 规则文件"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -723,10 +856,17 @@ private fun FileCard(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false },
                     ) {
+                        if (isYaml) {
+                            DropdownMenuItem(
+                                text = { Text("新增规则") },
+                                leadingIcon = { PerfIcon(PerfIcon.Add) },
+                                onClick = { showMenu = false; onAddRule() },
+                            )
+                        }
                         DropdownMenuItem(
-                            text = { Text("新增规则") },
-                            leadingIcon = { PerfIcon(PerfIcon.Add) },
-                            onClick = { showMenu = false; onAddRule() },
+                            text = { Text("复制") },
+                            leadingIcon = { PerfIcon(PerfIcon.ContentCopy) },
+                            onClick = { showMenu = false; showCopyDlg = true },
                         )
                         DropdownMenuItem(
                             text = { Text("移动") },
@@ -773,10 +913,40 @@ private fun FolderCard(
     isSelected: Boolean,
     onSelect: () -> Unit,
     onClick: () -> Unit,
+    onCopy: (String) -> Unit,
+    onMove: (String) -> Unit,
     onDelete: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteDlg by remember { mutableStateOf(false) }
+    var showCopyDlg by remember { mutableStateOf(false) }
+    var showMoveDlg by remember { mutableStateOf(false) }
+
+    if (showCopyDlg) {
+        TargetDirDialog(
+            title = "复制文件夹",
+            itemName = name,
+            actionLabel = "复制",
+            onDismiss = { showCopyDlg = false },
+            onConfirm = { targetDir ->
+                showCopyDlg = false
+                onCopy(targetDir)
+            },
+        )
+    }
+
+    if (showMoveDlg) {
+        TargetDirDialog(
+            title = "移动文件夹",
+            itemName = name,
+            actionLabel = "移动",
+            onDismiss = { showMoveDlg = false },
+            onConfirm = { targetDir ->
+                showMoveDlg = false
+                onMove(targetDir)
+            },
+        )
+    }
 
     if (showDeleteDlg) {
         AlertDialog(
@@ -816,6 +986,12 @@ private fun FolderCard(
                     checked = isSelected,
                     onCheckedChange = { onSelect() },
                 )
+            } else {
+                PerfIconButton(
+                    imageVector = if (collapsed) PerfIcon.KeyboardArrowRight else PerfIcon.KeyboardArrowDown,
+                    contentDescription = if (collapsed) "展开" else "折叠",
+                    onClick = { onClick() },
+                )
             }
             PerfIcon(
                 imageVector = PerfIcon.Folder,
@@ -847,6 +1023,16 @@ private fun FolderCard(
                         onDismissRequest = { showMenu = false },
                     ) {
                         DropdownMenuItem(
+                            text = { Text("复制") },
+                            leadingIcon = { PerfIcon(PerfIcon.ContentCopy) },
+                            onClick = { showMenu = false; showCopyDlg = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("移动") },
+                            leadingIcon = { PerfIcon(PerfIcon.DriveFileMove) },
+                            onClick = { showMenu = false; showMoveDlg = true },
+                        )
+                        DropdownMenuItem(
                             text = { Text("删除文件夹", color = MaterialTheme.colorScheme.error) },
                             leadingIcon = {
                                 PerfIcon(PerfIcon.Delete, tint = MaterialTheme.colorScheme.error)
@@ -861,10 +1047,12 @@ private fun FolderCard(
 }
 
 @Composable
-private fun MoveFileDialog(
-    fileName: String,
+private fun TargetDirDialog(
+    title: String,
+    itemName: String,
+    actionLabel: String,
     onDismiss: () -> Unit,
-    onMove: (String) -> Unit,
+    onConfirm: (String) -> Unit,
 ) {
     var targetDir by remember { mutableStateOf("") }
     val normalizedDir = targetDir.trimEnd('/')
@@ -873,10 +1061,10 @@ private fun MoveFileDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("移动文件") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("将「$fileName」移动到目标文件夹：")
+                Text("将「$itemName」${actionLabel}到目标文件夹：")
                 OutlinedTextField(
                     value = targetDir,
                     onValueChange = { targetDir = it },
@@ -889,9 +1077,9 @@ private fun MoveFileDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { if (isValid) onMove(normalizedDir) },
+                onClick = { if (isValid) onConfirm(normalizedDir) },
                 enabled = isValid,
-            ) { Text("移动") }
+            ) { Text(actionLabel) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
@@ -938,7 +1126,8 @@ private fun buildFileTreeItems(
 ): List<FileTreeItem> {
     val groupMap = groups.associateBy { it.sourceFile }
     val allEntries = workspaceDir.walkTopDown()
-        .filter { it != workspaceDir && (it.isDirectory || it.extension.equals("yml", ignoreCase = true) || it.extension.equals("yaml", ignoreCase = true)) }
+        .onEnter { !it.name.startsWith(".") }
+        .filter { it != workspaceDir && !it.name.startsWith(".") }
         .sortedBy { it.path }
 
     val root = TreeNode(path = "", name = "")

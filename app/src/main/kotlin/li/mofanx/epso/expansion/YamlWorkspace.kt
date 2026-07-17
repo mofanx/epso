@@ -166,7 +166,7 @@ class YamlWorkspace(val dir: File) {
     }
 
     /**
-     * 移动规则文件到目标子目录，并同步更新工作区中引用它的 imports 路径
+     * 移动文件到目标子目录；YAML 文件会同步更新工作区中引用它的 imports 路径
      */
     suspend fun moveFile(source: File, targetDirPath: String, defaultPrefix: String): File = withContext(Dispatchers.IO) {
         val sourceFile = source.absoluteFile
@@ -177,6 +177,15 @@ class YamlWorkspace(val dir: File) {
         val newFile = targetDir.resolve(sourceFile.name)
         if (newFile.absoluteFile == sourceFile.absoluteFile) return@withContext sourceFile
         if (newFile.exists()) throw IOException("Target file already exists: $newFile")
+
+        // 非 YAML 文件直接原样移动，不做 imports 处理
+        if (!sourceFile.isYamlFile()) {
+            sourceFile.copyTo(newFile)
+            if (!sourceFile.delete()) {
+                throw IOException("Cannot delete source file: $sourceFile")
+            }
+            return@withContext newFile
+        }
 
         val group = readFile(sourceFile, defaultPrefix)
         val oldPath = sourceFile.canonicalFile
@@ -217,6 +226,94 @@ class YamlWorkspace(val dir: File) {
         }
 
         newFile
+    }
+
+    /**
+     * 复制文件到目标子目录；YAML 文件会更新 imports 为相对新位置的相对路径
+     */
+    suspend fun copyFile(source: File, targetDirPath: String, defaultPrefix: String): File = withContext(Dispatchers.IO) {
+        val sourceFile = source.absoluteFile
+        if (!sourceFile.exists() || sourceFile.isDirectory) {
+            throw IOException("Source is not a file: $sourceFile")
+        }
+        val targetDir = dir.resolve(targetDirPath).autoMkdir()
+        val newFile = uniqueFile(targetDir, sourceFile.nameWithoutExtension, sourceFile.extension)
+
+        // 非 YAML 文件直接原样复制
+        if (!sourceFile.isYamlFile()) {
+            sourceFile.copyTo(newFile)
+            return@withContext newFile
+        }
+
+        val group = readFile(sourceFile, defaultPrefix)
+        val updatedImports = group.imports.map { import ->
+            val resolved = resolveImportPath(sourceFile.parentFile ?: dir, import).normalized()
+            if (resolved.exists()) {
+                newRelativePath(resolved, newFile.parentFile ?: dir, import)
+            } else {
+                import
+            }
+        }
+
+        writeFile(newFile, group.copy(imports = updatedImports))
+        newFile
+    }
+
+    /**
+     * 复制文件夹到目标目录，保持内部 YAML 文件之间的 imports 关系
+     */
+    suspend fun copyFolder(source: File, targetDirPath: String, defaultPrefix: String): File = withContext(Dispatchers.IO) {
+        val sourceFolder = source.absoluteFile
+        if (!sourceFolder.exists() || !sourceFolder.isDirectory) {
+            throw IOException("Source is not a folder: $sourceFolder")
+        }
+        val targetRoot = dir.resolve(targetDirPath).autoMkdir()
+        if (targetRoot.normalized().isInside(sourceFolder.normalized())) {
+            throw IOException("Cannot copy folder into itself: $sourceFolder")
+        }
+        val targetFolder = targetFolderForCopyOrMove(sourceFolder, targetRoot, forCopy = true)
+        sourceFolder.copyRecursively(targetFolder, overwrite = false, onError = { _, exception -> throw exception })
+
+        val sourceFiles = listAllYamlFiles(sourceFolder)
+        val newToSource = sourceFiles.map { it.normalized() }.associate { oldFile ->
+            val newFile = targetFolder.resolve(oldFile.relativeTo(sourceFolder.normalized())).normalized()
+            newFile to oldFile
+        }
+
+        updateFolderImportsAfterCopyOrMove(sourceFolder, targetFolder, newToSource, defaultPrefix)
+        targetFolder
+    }
+
+    /**
+     * 移动文件夹到目标目录，并同步更新工作区其它文件中引用它的 imports 路径
+     */
+    suspend fun moveFolder(source: File, targetDirPath: String, defaultPrefix: String): File = withContext(Dispatchers.IO) {
+        val sourceFolder = source.absoluteFile
+        if (!sourceFolder.exists() || !sourceFolder.isDirectory) {
+            throw IOException("Source is not a folder: $sourceFolder")
+        }
+        val targetRoot = dir.resolve(targetDirPath).autoMkdir()
+        if (targetRoot.normalized().isInside(sourceFolder.normalized())) {
+            throw IOException("Cannot move folder into itself: $sourceFolder")
+        }
+        val targetFolder = targetFolderForCopyOrMove(sourceFolder, targetRoot, forCopy = false)
+        if (targetFolder.normalized() == sourceFolder.normalized()) {
+            return@withContext sourceFolder
+        }
+        sourceFolder.copyRecursively(targetFolder, overwrite = false, onError = { _, exception -> throw exception })
+
+        val sourceFiles = listAllYamlFiles(sourceFolder)
+        val oldToNew = sourceFiles.map { it.normalized() }.associate { oldFile ->
+            val newFile = targetFolder.resolve(oldFile.relativeTo(sourceFolder.normalized())).normalized()
+            oldFile to newFile
+        }
+        val newToSource = oldToNew.map { (old, new) -> new to old }.toMap()
+
+        updateFolderImportsAfterCopyOrMove(sourceFolder, targetFolder, newToSource, defaultPrefix)
+        updateFilesReferencingMovedFolder(sourceFolder, targetFolder, oldToNew, defaultPrefix)
+
+        sourceFolder.deleteRecursively()
+        targetFolder
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -330,9 +427,15 @@ class YamlWorkspace(val dir: File) {
         }
     }
 
+    private fun isYaml(f: File): Boolean =
+        f.isFile && (f.extension == "yml" || f.extension == "yaml")
+
+    private fun File.isYamlFile(): Boolean =
+        extension.equals("yml", ignoreCase = true) || extension.equals("yaml", ignoreCase = true)
+
     private fun listYamlFiles(directory: File): List<File> {
         return directory
-            .listFiles { f -> f.isFile && (f.extension == "yml" || f.extension == "yaml") }
+            .listFiles { f -> isYaml(f) && !f.name.startsWith(".") }
             ?.sortedBy { it.name }
             ?: emptyList()
     }
@@ -340,7 +443,8 @@ class YamlWorkspace(val dir: File) {
     private fun listAllYamlFiles(directory: File): List<File> {
         return directory
             .walkTopDown()
-            .filter { it.isFile && (it.extension == "yml" || it.extension == "yaml") }
+            .onEnter { !it.name.startsWith(".") }
+            .filter { isYaml(it) && !it.name.startsWith(".") }
             .sortedBy { it.path }
             .toList()
     }
@@ -359,6 +463,103 @@ class YamlWorkspace(val dir: File) {
         } catch (e: Exception) {
             if (file.exists() && !file.delete()) throw IOException("无法替换 ${file.name}", e)
             if (!tmp.renameTo(file)) throw IOException("无法写入 ${file.name}", e)
+        }
+    }
+
+    private fun File.normalized(): File = toPath().normalize().toFile()
+
+    private fun File.isInside(parent: File): Boolean = runCatching {
+        toPath().normalize().startsWith(parent.toPath().normalize())
+    }.getOrDefault(false)
+
+    private fun uniqueFile(dir: File, base: String, ext: String): File {
+        val name = if (ext.isEmpty()) base else "$base.$ext"
+        var file = dir.resolve(name)
+        if (!file.exists()) return file
+        var i = 1
+        while (true) {
+            val newName = if (ext.isEmpty()) "$base ($i)" else "$base ($i).$ext"
+            file = dir.resolve(newName)
+            if (!file.exists()) return file
+            i++
+        }
+    }
+
+    private fun uniqueFolder(parent: File, name: String): File {
+        var folder = parent.resolve(name)
+        if (!folder.exists()) return folder
+        var i = 1
+        while (true) {
+            folder = parent.resolve("$name ($i)")
+            if (!folder.exists()) return folder
+            i++
+        }
+    }
+
+    private fun targetFolderForCopyOrMove(sourceFolder: File, targetRoot: File, forCopy: Boolean): File {
+        val candidate = targetRoot.resolve(sourceFolder.name)
+        val sourceNormalized = sourceFolder.normalized()
+        val candidateNormalized = candidate.normalized()
+        if (candidateNormalized == sourceNormalized) {
+            if (!forCopy) return sourceFolder
+            return uniqueFolder(targetRoot, sourceFolder.name + " (copy)")
+        }
+        if (!candidate.exists()) return candidate
+        if (forCopy) return uniqueFolder(targetRoot, sourceFolder.name + " (copy)")
+        return uniqueFolder(targetRoot, sourceFolder.name)
+    }
+
+    private suspend fun updateFolderImportsAfterCopyOrMove(
+        sourceFolder: File,
+        targetFolder: File,
+        newToSource: Map<File, File>,
+        defaultPrefix: String,
+    ) {
+        for ((targetFile, sourceFile) in newToSource) {
+            val group = readFile(targetFile, defaultPrefix)
+            val updatedImports = group.imports.map { import ->
+                val resolved = resolveImportPath(sourceFile.parentFile ?: sourceFolder, import).normalized()
+                val newImported = when {
+                    resolved.isInside(sourceFolder.normalized()) ->
+                        targetFolder.resolve(resolved.relativeTo(sourceFolder.normalized())).normalized()
+                    resolved.exists() -> resolved
+                    else -> null
+                }
+                if (newImported != null) {
+                    newRelativePath(newImported, targetFile.parentFile ?: targetFolder, import)
+                } else {
+                    import
+                }
+            }
+            if (updatedImports != group.imports) {
+                writeFile(targetFile, group.copy(imports = updatedImports))
+            }
+        }
+    }
+
+    private suspend fun updateFilesReferencingMovedFolder(
+        sourceFolder: File,
+        targetFolder: File,
+        oldToNew: Map<File, File>,
+        defaultPrefix: String,
+    ) {
+        val allFiles = listAllYamlFiles(dir).filter { !it.normalized().isInside(targetFolder.normalized()) }
+        for (f in allFiles) {
+            val group = readFile(f, defaultPrefix)
+            val updatedImports = group.imports.map { import ->
+                val resolved = resolveImportPath(f.parentFile ?: dir, import).normalized()
+                val targetFile = oldToNew[resolved]
+                if (targetFile != null) {
+                    newRelativePath(targetFile, f.parentFile ?: dir, import)
+                } else if (resolved.exists()) {
+                    newRelativePath(resolved, f.parentFile ?: dir, import)
+                } else {
+                    import
+                }
+            }
+            if (updatedImports != group.imports) {
+                writeFile(f, group.copy(imports = updatedImports))
+            }
         }
     }
 }
