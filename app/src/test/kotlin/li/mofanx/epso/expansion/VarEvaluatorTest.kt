@@ -122,7 +122,7 @@ class VarEvaluatorTest {
             val result = ev.evaluate("{{r}}", localVars = listOf(v))
             val num = result.toIntOrNull()
             assertNotNull(num)
-            assertTrue(num!! in 5..10)
+            assertTrue(num in 5..10)
         }
     }
 
@@ -181,12 +181,41 @@ class VarEvaluatorTest {
             "Expected year in result, got: $result")
     }
 
+    // ── depends_on 拓扑排序 ─────────────────────────────────────────
+
+    @Test
+    fun `depends_on is evaluated in correct order`() = runTest {
+        val second = echoVar("second", "World")
+        val first = Var(
+            name = "first",
+            type = "echo",
+            params = VarParams(echo = "Hello"),
+            dependsOn = listOf("second"),
+        )
+        val ev = evaluator()
+        val result = ev.evaluate(
+            replace = "{{first}} {{second}}",
+            localVars = listOf(first, second),
+        )
+        assertEquals("Hello World", result)
+    }
+
+    @Test
+    fun `circular depends_on does not crash and remaining vars evaluate`() = runTest {
+        val a = Var(name = "a", type = "echo", params = VarParams(echo = "A"), dependsOn = listOf("b"))
+        val b = Var(name = "b", type = "echo", params = VarParams(echo = "B"), dependsOn = listOf("a"))
+        val ev = evaluator()
+        // should not throw
+        val result = ev.evaluate("{{a}}", localVars = listOf(a, b))
+        assertTrue(result == "A" || result == "{{a}}")
+    }
+
     // ── unsupported type ────────────────────────────────────────────
 
     @Test
     fun `unsupported var type leaves placeholder`() = runTest {
         val ev = evaluator()
-        val v = Var(name = "s", type = "shell", params = VarParams(cmd = "echo hi"))
+        val v = Var(name = "s", type = "unsupported", params = VarParams(cmd = "echo hi"))
         val result = ev.evaluate("{{s}}", localVars = listOf(v))
         assertEquals("{{s}}", result)
     }

@@ -4,7 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import li.mofanx.epso.app
 import li.mofanx.epso.util.LogUtils
-import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 
@@ -45,7 +46,7 @@ class VarEvaluator(
 ) {
     /**
      * 对 [replace] 字符串进行变量替换。
-     * 局部变量覆盖同名全局变量，合并后统一求值。
+     * 局部变量覆盖同名全局变量，合并后按依赖拓扑排序统一求值。
      */
     suspend fun evaluate(replace: String, localVars: List<Var>, depth: Int = 0): String {
         if (replace.isBlank()) return replace
@@ -57,17 +58,59 @@ class VarEvaluator(
             localVars.forEach { put(it.name, it) }
         }.values
 
-        // 阶段一：求值所有变量
+        // 阶段一：按依赖拓扑排序求值所有变量
+        val sortedVars = topologicalSort(merged)
         val values = mutableMapOf<String, Any?>()
-        for (v in merged) {
-            values[v.name] = evaluateVar(v, depth)
+        for (v in sortedVars) {
+            values[v.name] = evaluateVar(v, values, depth)
         }
 
         // 阶段二：替换 replace 中所有 {{name}} 或 {{name.field}}
         return replacePlaceholders(replace, values)
     }
 
-    private suspend fun evaluateVar(v: Var, depth: Int): Any? {
+    /**
+     * 根据 depends_on 对变量做拓扑排序，保证依赖先求值。
+     * 若存在循环依赖，剩余变量按原顺序追加并打印警告。
+     */
+    private fun topologicalSort(vars: Collection<Var>): List<Var> {
+        val varMap = vars.associateBy { it.name }
+        val inDegree = vars.associate { it.name to it.dependsOn.count { dep -> dep in varMap } }.toMutableMap()
+        val dependents = mutableMapOf<String, MutableList<String>>()
+        for (v in vars) {
+            for (dep in v.dependsOn) {
+                if (dep in varMap) {
+                    dependents.getOrPut(dep) { mutableListOf() }.add(v.name)
+                }
+            }
+        }
+
+        val queue = ArrayDeque(vars.filter { inDegree[it.name] == 0 }.map { it.name })
+        val result = mutableListOf<Var>()
+        val visited = mutableSetOf<String>()
+
+        while (queue.isNotEmpty()) {
+            val name = queue.removeFirst()
+            if (name in visited) continue
+            visited.add(name)
+            val v = varMap[name] ?: continue
+            result.add(v)
+            for (dependent in dependents[name] ?: emptyList()) {
+                inDegree[dependent] = (inDegree[dependent] ?: 0) - 1
+                if (inDegree[dependent] == 0) queue.add(dependent)
+            }
+        }
+
+        val remaining = vars.filter { it.name !in visited }
+        if (remaining.isNotEmpty()) {
+            LogUtils.e(TAG, "Circular or unresolved dependencies among: ${remaining.map { it.name }}")
+            result.addAll(remaining)
+        }
+
+        return result
+    }
+
+    private suspend fun evaluateVar(v: Var, values: Map<String, Any?>, depth: Int): Any? {
         return try {
             when (v.type) {
                 "echo" -> v.params.echo
@@ -95,6 +138,29 @@ class VarEvaluator(
                     // Phase 3：与 random 相同（Phase 4 接入悬浮窗后升级为交互选择）
                     val choices = v.params.values.ifEmpty { v.params.choices }
                     choices.randomOrNull()
+                }
+
+                "shell" -> {
+                    ShellRunner.run(
+                        cmd = v.params.cmd ?: "",
+                        shell = v.params.shell,
+                        values = if (v.injectVars) values else emptyMap(),
+                        injectVars = v.injectVars,
+                        trim = v.params.trim,
+                        debug = v.params.debug,
+                        ignoreError = v.params.ignoreError,
+                    )
+                }
+
+                "script" -> {
+                    ScriptRunner.run(
+                        args = v.params.args,
+                        values = if (v.injectVars) values else emptyMap(),
+                        injectVars = v.injectVars,
+                        trim = v.params.trim,
+                        debug = v.params.debug,
+                        ignoreError = v.params.ignoreError,
+                    )
                 }
 
                 "match" -> {
@@ -161,14 +227,20 @@ class VarEvaluator(
     // ── date ──────────────────────────────────────────────────────
 
     private fun evaluateDate(params: VarParams): String {
-        val dt = LocalDateTime.now().plusSeconds(params.offset)
+        val zone = try {
+            params.tz?.let { ZoneId.of(it) } ?: ZoneId.systemDefault()
+        } catch (e: Exception) {
+            LogUtils.e(TAG, "Invalid timezone '${params.tz}', fallback to system default", e)
+            ZoneId.systemDefault()
+        }
+        val zdt = ZonedDateTime.now(zone).plusSeconds(params.offset)
         val format = params.format ?: "%Y-%m-%d"
         val pattern = strftimeToDateTimeFormatter(format)
         return try {
-            dt.format(DateTimeFormatter.ofPattern(pattern))
+            zdt.format(DateTimeFormatter.ofPattern(pattern))
         } catch (e: Exception) {
             LogUtils.e(TAG, "Invalid date format '$format'", e)
-            dt.toString()
+            zdt.toString()
         }
     }
 
