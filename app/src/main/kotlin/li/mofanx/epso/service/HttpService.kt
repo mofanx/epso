@@ -57,6 +57,10 @@ import li.mofanx.epso.util.toast
 import java.io.File
 import java.util.UUID
 
+import li.mofanx.epso.expansion.TriggerMatcher
+import li.mofanx.epso.expansion.VarEvaluator
+import li.mofanx.epso.expansion.applyPropagateCase
+
 
 class HttpService : Service(), OnSimpleLife by DefaultSimpleLifeImpl() {
     override fun onBind(intent: Intent?) = null
@@ -187,6 +191,29 @@ data class ApiRule(
 
 @Serializable
 data class ExpansionRequest(val enabled: Boolean)
+
+@Serializable
+data class ExpandRequest(
+    val text: String,
+    val packageName: String = "",
+    val className: String = "",
+    val title: String = "",
+)
+
+@Serializable
+data class ExpandResponse(
+    val matched: Boolean,
+    val trigger: String = "",
+    val triggerStart: Int = -1,
+    val triggerEnd: Int = -1,
+    val replacement: String = "",
+    val fullText: String = "",
+    val format: String = "text",
+    val cursor: Int = -1,
+    val imagePath: String? = null,
+    val needsInteraction: Boolean = false,
+    val message: String = "",
+)
 
 @Serializable
 data class ApiResult(val ok: Boolean = true)
@@ -349,6 +376,12 @@ private fun createServer(port: Int) = embeddedServer(CIO, port) {
                 storeFlow.value = storeFlow.value.copy(enableExpansion = request.enabled)
                 call.respond(ApiResult())
             }
+            post("/expand") {
+                if (!call.isAuthorized()) return@post
+                val request = call.receive<ExpandRequest>()
+                val response = expandText(request)
+                call.respond(response)
+            }
         }
     }
 }
@@ -437,5 +470,130 @@ private fun getKtorErrorPlugin() = createApplicationPlugin(name = "KtorErrorPlug
                 cause.printStackTrace()
             }
         }
+    }
+}
+
+/**
+ * 模拟一次扩展过程，但不执行真实的 Accessibility 替换。
+ * 用于手工/自动化测试：给定输入文本，返回会匹配到的触发词、展开后的文本、光标位置等。
+ */
+private suspend fun expandText(request: ExpandRequest): ExpandResponse {
+    if (request.text.isBlank()) {
+        return ExpandResponse(matched = false, message = "empty text")
+    }
+
+    val matcher = TriggerMatcher()
+    MatchStore.matchDict.value.values.distinct().forEach { match ->
+        matcher.addMatch(match)
+    }
+
+    val matchResult = matcher.match(request.text)
+        ?: return ExpandResponse(matched = false, message = "no match")
+
+    val match = matchResult.match
+    if (!match.isActiveFor(
+            packageName = request.packageName,
+            className = request.className,
+            title = request.title,
+        )
+    ) {
+        return ExpandResponse(
+            matched = false,
+            trigger = matchResult.matchedText,
+            triggerStart = matchResult.startIndex,
+            triggerEnd = matchResult.endIndex,
+            message = "filtered by app context",
+        )
+    }
+
+    val isInteractive = match.isForm || match.vars.any { it.type == "form" || it.type == "choice" }
+    if (isInteractive) {
+        return ExpandResponse(
+            matched = true,
+            trigger = matchResult.matchedText,
+            triggerStart = matchResult.startIndex,
+            triggerEnd = matchResult.endIndex,
+            replacement = match.form ?: "",
+            format = if (match.isForm || match.vars.any { it.type == "form" }) "form" else "choice",
+            needsInteraction = true,
+            message = "requires user interaction",
+        )
+    }
+
+    val rawSource = when {
+        match.replace.isNotEmpty() -> match.replace
+        !match.markdown.isNullOrEmpty() -> match.markdown
+        !match.html.isNullOrEmpty() -> match.html
+        else -> ""
+    }
+    val format = when {
+        !match.imagePath.isNullOrEmpty() -> "image"
+        !match.markdown.isNullOrEmpty() -> "markdown"
+        !match.html.isNullOrEmpty() -> "html"
+        else -> "text"
+    }
+
+    val evaluator = VarEvaluator(
+        globalVars = MatchStore.globalVars.value,
+        formLauncher = { null },
+        choiceLauncher = { null },
+    )
+
+    val evaluated = try {
+        evaluator.evaluate(rawSource, match.vars)
+    } catch (e: Exception) {
+        return ExpandResponse(
+            matched = true,
+            trigger = matchResult.matchedText,
+            triggerStart = matchResult.startIndex,
+            triggerEnd = matchResult.endIndex,
+            replacement = rawSource,
+            format = format,
+            message = "var evaluation failed: ${e.message}",
+        )
+    }
+
+    var finalReplacement = evaluated
+    if (match.propagateCase) {
+        finalReplacement = applyPropagateCase(
+            trigger = matchResult.matchedText,
+            replace = finalReplacement,
+            style = match.uppercaseStyle,
+        )
+    }
+
+    val marker = "\$|\$"
+    val hasCursorMarker = finalReplacement.contains(marker)
+    val (processedText, cursorOffset) = processCursorMarker(finalReplacement)
+    val fullText = buildString {
+        append(request.text.substring(0, matchResult.startIndex))
+        append(processedText)
+        append(request.text.substring(matchResult.endIndex))
+    }
+
+    return ExpandResponse(
+        matched = true,
+        trigger = matchResult.matchedText,
+        triggerStart = matchResult.startIndex,
+        triggerEnd = matchResult.endIndex,
+        replacement = processedText,
+        fullText = fullText,
+        format = format,
+        imagePath = match.imagePath,
+        cursor = if (hasCursorMarker) matchResult.startIndex + cursorOffset else -1,
+        message = "ok",
+    )
+}
+
+/**
+ * 处理 $|$ 光标位置标记，返回清除标记后的文本与光标偏移量（相对 replacement）。
+ */
+private fun processCursorMarker(text: String): Pair<String, Int> {
+    val marker = "\$|\$"
+    val idx = text.indexOf(marker)
+    return if (idx == -1) {
+        text to text.length
+    } else {
+        text.replace(marker, "") to idx
     }
 }

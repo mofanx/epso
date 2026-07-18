@@ -1,0 +1,85 @@
+# Epso 手工/自动化测试套件
+# 通过 scripts/run-tests.sh 上传到手机端工作区，然后调用 /api/v1/expand 验证
+prefix: ""
+backend: auto
+
+global_vars:
+  - name: myname
+    type: echo
+    params:
+      echo: Alice
+
+matches:
+  # 1. 基础替换 + 全局变量
+  - trigger: "h:"
+    replace: "hello, {{myname}}"
+
+  # 2. 局部 date 变量
+  - trigger: "d:"
+    replace: "today is {{today}}"
+    vars:
+      - name: today
+        type: date
+        params:
+          format: "%Y-%m-%d"
+
+  # 3. 剪贴板变量
+  - trigger: "clip:"
+    replace: "clipboard={{clipboard}}"
+
+  # 4. 随机数变量
+  - trigger: "rand:"
+    replace: "num={{num}}"
+    vars:
+      - name: num
+        type: random
+        params:
+          min: 1
+          max: 100
+
+  # 5. Markdown 输出
+  - trigger: "md:"
+    markdown: "# Title\n**bold** and `code`"
+
+  # 6. HTML 输出
+  - trigger: "html:"
+    html: "<b>bold</b> and <i>italic</i>"
+
+  # 7. 单词边界
+  - trigger: "w:"
+    replace: "word"
+    word: true
+
+  # 8. 左侧边界
+  - trigger: "lw:"
+    replace: "left"
+    left_word: true
+
+  # 9. 大小写传播
+  - trigger: "prop:"
+    replace: "upper"
+    propagate_case: true
+
+  # 10. 正则触发
+  - trigger: "reg:"
+    regex: ":date .+"
+    replace: "date matched"
+
+  # 11. 图片输出
+  - trigger: "img:"
+    replace: ""
+    image_path: "%CONFIG%/test.png"
+
+  # 12. 表单
+  - trigger: "form:"
+    form: "Name: [[name]]\nAge: [[age]]"
+    form_fields:
+      name:
+        type: input
+      age:
+        type: input
+
+  # 13. 应用过滤
+  - trigger: "filter:"
+    replace: "filtered"
+    filter_exec: 'com\.example\.notes'

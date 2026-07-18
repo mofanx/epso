@@ -163,6 +163,16 @@ class TriggerMatcherTest {
     }
 
     @Test
+    fun `match with both trigger and regex uses regex`() = runTest {
+        // 当 regex 非空时，该 Match 应走正则匹配通道
+        matcher.addMatch(Match(trigger = "abc", regex = ":date [^ ]+", replace = "[date]"))
+        val r = matcher.match("meet :date 2026-07-18 today")
+        assertNotNull(r)
+        assertEquals(":date 2026-07-18", r.matchedText)
+        assertEquals("[date]", r.match.replace)
+    }
+
+    @Test
     fun `clear removes all matches`() = runTest {
         matcher.addMatch(match(":eml", "x"))
         matcher.addMatch(Match(regex = "\\d+", replace = "num"))

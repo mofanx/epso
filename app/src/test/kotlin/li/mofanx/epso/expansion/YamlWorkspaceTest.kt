@@ -246,6 +246,40 @@ class YamlWorkspaceTest {
         assertEquals("console.log('hi')", moved.readText())
     }
 
+    // ── group-level defaults ────────────────────────────────────────
+
+    @Test
+    fun `loadAll applies group-level prefix to triggers`() = runTest {
+        val f = ws.createFile("base")
+        ws.writeFile(
+            f,
+            MatchGroup(
+                prefix = "@",
+                matches = listOf(Match(trigger = "hello", replace = "Hello")),
+            ),
+        )
+        val (dict, _) = ws.loadAll()
+        assertTrue("@hello" in dict, "Expected @hello, got: ${dict.keys}")
+        assertEquals("Hello", dict["@hello"]?.replace)
+    }
+
+    @Test
+    fun `loadAll applies group-level filter_exec to matches`() = runTest {
+        val f = ws.createFile("base")
+        ws.writeFile(
+            f,
+            MatchGroup(
+                filterExec = "com\\.example\\.notes",
+                matches = listOf(Match(trigger = ":t", replace = "ok")),
+            ),
+        )
+        val (dict, _) = ws.loadAll()
+        val match = dict[":t"]!!
+        assertEquals("com\\.example\\.notes", match.effectiveFilterExec)
+        assertTrue(match.isActiveFor(packageName = "com.example.notes"))
+        assertFalse(match.isActiveFor(packageName = "com.other.app"))
+    }
+
     // ── anchors/aliases ─────────────────────────────────────────────
 
     @Test

@@ -111,6 +111,40 @@ internal val API_DOCS = """
 
 请求体：`{ "enabled": true }`
 
+### POST /api/v1/expand
+模拟一次文本扩展，返回匹配到的触发词和展开后的文本，不执行真实的 Accessibility 替换。
+
+请求体：
+```json
+{
+  "text": ":hello world",
+  "packageName": "com.example.notes",
+  "className": "",
+  "title": ""
+}
+```
+
+响应示例：
+```json
+{
+  "matched": true,
+  "trigger": ":hello",
+  "triggerStart": 0,
+  "triggerEnd": 6,
+  "replacement": "你好，世界",
+  "fullText": "你好，世界 world",
+  "format": "text",
+  "cursor": -1,
+  "imagePath": null,
+  "needsInteraction": false,
+  "message": "ok"
+}
+```
+
+- `format` 可能为 `text`、`markdown`、`html`、`image`、`form`、`choice`
+- `needsInteraction` 为 `true` 时表示需要用户填写表单或选择项
+- 可用于自动化测试规则匹配、变量展开、大小写传播、光标定位等逻辑
+
 ### GET /api/v1/files
 列出工作区所有 YAML 文件。
 

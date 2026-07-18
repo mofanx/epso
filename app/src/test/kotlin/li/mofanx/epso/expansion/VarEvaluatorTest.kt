@@ -5,6 +5,7 @@ import org.junit.Test
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -19,8 +20,9 @@ class VarEvaluatorTest {
 
     private fun evaluator(
         globalVars: List<Var> = emptyList(),
+        formLauncher: suspend (Var) -> Map<String, String>? = { null },
         choiceLauncher: suspend (Var) -> String? = { null },
-    ) = VarEvaluator(globalVars, choiceLauncher = choiceLauncher)
+    ) = VarEvaluator(globalVars, formLauncher = formLauncher, choiceLauncher = choiceLauncher)
 
     // ── echo ────────────────────────────────────────────────────────
 
@@ -252,6 +254,34 @@ class VarEvaluatorTest {
     @Test
     fun `propagateCase trigger with no letters unchanged`() {
         assertEquals("hello", applyPropagateCase("::", "hello", "uppercase"))
+    }
+
+    // ── form / choice 交互变量 ───────────────────────────────────────
+
+    @Test
+    fun `form var uses launcher result fields`() = runTest {
+        val ev = evaluator(formLauncher = { mapOf("name" to "Alice", "age" to "30") })
+        val v = Var(name = "f", type = "form", params = VarParams())
+        val result = ev.evaluate("Name: {{f.name}}, Age: {{f.age}}", localVars = listOf(v))
+        assertEquals("Name: Alice, Age: 30", result)
+    }
+
+    @Test
+    fun `form var with null launcher throws FormCanceledException`() = runTest {
+        val ev = evaluator()
+        val v = Var(name = "f", type = "form", params = VarParams())
+        assertFailsWith<FormCanceledException> {
+            ev.evaluate("{{f}}", localVars = listOf(v))
+        }
+    }
+
+    @Test
+    fun `choice var with null launcher throws FormCanceledException`() = runTest {
+        val ev = evaluator()
+        val v = Var(name = "c", type = "choice", params = VarParams(values = listOf("A", "B")))
+        assertFailsWith<FormCanceledException> {
+            ev.evaluate("{{c}}", localVars = listOf(v))
+        }
     }
 
     // ── helpers ─────────────────────────────────────────────────────
