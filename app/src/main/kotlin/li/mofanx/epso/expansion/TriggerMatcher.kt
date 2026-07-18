@@ -80,13 +80,14 @@ class TriggerMatcher {
         // 从最长触发词开始匹配（避免短触发词误触长触发词）
         val sorted = exactMatches.entries.sortedByDescending { it.key.length }
         for ((trigger, match) in sorted) {
-            val idx = text.lastIndexOf(trigger)
+            val idx = text.lastIndexOf(trigger, ignoreCase = match.propagateCase)
             if (idx < 0) continue
 
+            val matchedText = text.substring(idx, idx + trigger.length)
             if (checkWordBoundary(text, idx, trigger.length, match)) {
                 return MatchResult(
                     match = match,
-                    matchedText = trigger,
+                    matchedText = matchedText,
                     startIndex = idx,
                     endIndex = idx + trigger.length,
                 )
