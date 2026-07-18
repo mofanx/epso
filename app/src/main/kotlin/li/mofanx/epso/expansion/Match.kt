@@ -64,6 +64,8 @@ data class Match(
     val preserveClipboard: Boolean? = null,
     @SerialName("restore_clipboard_delay")
     val restoreClipboardDelay: Int? = null,
+    @SerialName("clipboard_threshold")
+    val clipboardThreshold: Int? = null,
 ) {
     /** 运行时解析后的有效前缀（不参与 equals/序列化） */
     @Transient
@@ -90,6 +92,10 @@ data class Match(
     var effectivePreserveClipboard: Boolean = true
     @Transient
     var effectiveRestoreClipboardDelay: Int = 300
+
+    /** 运行时解析后的剪贴板阈值（默认 100） */
+    @Transient
+    var effectiveClipboardThreshold: Int = 100
 
     /** 所有有效触发词（trigger + triggers 合并去重，并自动拼接 effectivePrefix/prefix） */
     val allTriggers: List<String>

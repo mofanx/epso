@@ -51,7 +51,7 @@ class TextReplacer(private val a11yService: A11yService) {
 
             lastReplacement = originalText to node
 
-            if (shouldUseClipboard(match)) {
+            if (shouldUseClipboard(match, replacement.length)) {
                 performClipboardReplacement(
                     node = node,
                     originalText = originalText,
@@ -102,7 +102,7 @@ class TextReplacer(private val a11yService: A11yService) {
             // 3. 记录替换前状态（供 undo 使用）
             lastReplacement = originalText to node
 
-            if (shouldUseClipboard(match)) {
+            if (shouldUseClipboard(match, processedText.length)) {
                 performClipboardReplacement(
                     node = node,
                     originalText = originalText,
@@ -217,12 +217,18 @@ class TextReplacer(private val a11yService: A11yService) {
 
     /**
      * 判断当前 match 是否需要走剪贴板+粘贴。
-     * 优先级：match.force_clipboard > effectiveBackend（force_mode / group backend）
+     * 优先级：match.force_clipboard > effectiveBackend=clipboard/keys > auto/backend 空 + 长度超 threshold
      */
-    private fun shouldUseClipboard(match: Match): Boolean {
-        return match.forceClipboard
-            || match.effectiveBackend.equals("clipboard", ignoreCase = true)
-            || match.effectiveBackend.equals("keys", ignoreCase = true) // 手机上无法模拟键入，回退到剪贴板
+    private fun shouldUseClipboard(match: Match, replacementLength: Int = 0): Boolean {
+        if (match.forceClipboard) return true
+        val backend = match.effectiveBackend
+        if (backend.equals("clipboard", ignoreCase = true)
+            || backend.equals("keys", ignoreCase = true)
+        ) return true
+        if (backend.isEmpty() || backend.equals("auto", ignoreCase = true)) {
+            return replacementLength > match.effectiveClipboardThreshold
+        }
+        return false
     }
 
     /**

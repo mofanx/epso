@@ -36,6 +36,8 @@ data class MatchGroup(
     val preserveClipboard: Boolean? = null,
     @SerialName("restore_clipboard_delay")
     val restoreClipboardDelay: Int? = null,
+    @SerialName("clipboard_threshold")
+    val clipboardThreshold: Int? = null,
     @SerialName("filter_title")
     val filterTitle: String? = null,
     @SerialName("filter_exec")
