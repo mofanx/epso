@@ -93,6 +93,8 @@ import li.mofanx.epso.ui.expansion.MatchEditorPage
 import li.mofanx.epso.ui.expansion.MatchEditorRoute
 import li.mofanx.epso.ui.expansion.MatchListPage
 import li.mofanx.epso.ui.expansion.MatchListRoute
+import li.mofanx.epso.ui.expansion.YamlEditorPage
+import li.mofanx.epso.ui.expansion.YamlEditorRoute
 import li.mofanx.epso.ui.AppOpsAllowPage
 import li.mofanx.epso.ui.AppOpsAllowRoute
 import li.mofanx.epso.ui.AuthA11yPage
@@ -263,6 +265,7 @@ class MainActivity : ComponentActivity() {
                             entry<CrashReportRoute> { CrashReportPage() }
                             entry<MatchListRoute> { MatchListPage(it) }
                             entry<MatchEditorRoute> { MatchEditorPage(it) }
+                            entry<YamlEditorRoute> { YamlEditorPage(it) }
                             entry<FilesRoute> { FilesPage() }
                             entry<GlobalVarsRoute> { GlobalVarsPage() }
                             entry<SyncSettingsRoute> { SyncSettingsPage() }

@@ -472,6 +472,11 @@ fun FilesPage() {
                                         MatchEditorRoute(sourceFilePath = item.group.sourceFile)
                                     )
                                 },
+                                onEditYaml = {
+                                    mainVm.navigatePage(
+                                        YamlEditorRoute(sourceFilePath = item.group.sourceFile)
+                                    )
+                                },
                                 onDelete = { file ->
                                     scope.launch(Dispatchers.IO) {
                                         MatchStore.deleteFile(file)
@@ -715,6 +720,7 @@ private fun FileCard(
     onSelect: () -> Unit,
     onClick: () -> Unit,
     onAddRule: () -> Unit,
+    onEditYaml: () -> Unit,
     onDelete: (File) -> Unit,
 ) {
     val file = remember(group.sourceFile) { File(group.sourceFile) }
@@ -857,6 +863,11 @@ private fun FileCard(
                         onDismissRequest = { showMenu = false },
                     ) {
                         if (isYaml) {
+                            DropdownMenuItem(
+                                text = { Text("编辑 YAML") },
+                                leadingIcon = { PerfIcon(PerfIcon.Edit) },
+                                onClick = { showMenu = false; onEditYaml() },
+                            )
                             DropdownMenuItem(
                                 text = { Text("新增规则") },
                                 leadingIcon = { PerfIcon(PerfIcon.Add) },
