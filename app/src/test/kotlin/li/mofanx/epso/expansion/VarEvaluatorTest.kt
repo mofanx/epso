@@ -17,8 +17,10 @@ import kotlin.test.assertTrue
  */
 class VarEvaluatorTest {
 
-    private fun evaluator(globalVars: List<Var> = emptyList()) =
-        VarEvaluator(globalVars)
+    private fun evaluator(
+        globalVars: List<Var> = emptyList(),
+        choiceLauncher: suspend (Var) -> String? = { null },
+    ) = VarEvaluator(globalVars, choiceLauncher = choiceLauncher)
 
     // ── echo ────────────────────────────────────────────────────────
 
@@ -129,7 +131,7 @@ class VarEvaluatorTest {
     @Test
     fun `choice picks one of the values`() = runTest {
         val values = listOf("x", "y")
-        val ev = evaluator()
+        val ev = evaluator(choiceLauncher = { values.first() })
         val v = Var(
             name = "c",
             type = "choice",

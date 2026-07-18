@@ -118,6 +118,10 @@
             android:exported="false" />
 
         <service
+            android:name=".expansion.ChoiceOverlayWindow"
+            android:exported="false" />
+
+        <service
             android:name=".expansion.SearchOverlayWindow"
             android:exported="false" />
 

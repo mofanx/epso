@@ -63,6 +63,7 @@ open class ExpansionService : A11yService() {
     private var varEvaluator = VarEvaluator(
         globalVars = MatchStore.globalVars.value,
         formLauncher = { launchForm(it) },
+        choiceLauncher = { launchChoice(it) },
     )
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -123,6 +124,7 @@ open class ExpansionService : A11yService() {
                 varEvaluator = VarEvaluator(
                     globalVars = vars,
                     formLauncher = { launchForm(it) },
+                    choiceLauncher = { launchChoice(it) },
                 )
             }
             .launchIn(serviceScope)
@@ -228,7 +230,7 @@ open class ExpansionService : A11yService() {
                 match.isForm && !match.form.isNullOrEmpty() -> {
                     handleFormExpansion(match, matchResult, node, text)
                 }
-                match.vars.any { it.type == "form" } -> {
+                match.vars.any { it.type == "form" || it.type == "choice" } -> {
                     handleFormVarExpansion(match, matchResult, node, text)
                 }
                 else -> textReplacer.replace(
@@ -418,6 +420,35 @@ open class ExpansionService : A11yService() {
                 throw FormCanceledException()
             }
             result.values
+        }
+    }
+
+    /**
+     * 启动选择悬浮窗并收集结果（给 VarEvaluator 的 choice 类型变量使用）。
+     * 同一时间只能显示一个弹窗；用户取消/超时/无权限都返回 null。
+     */
+    private suspend fun launchChoice(choiceVar: Var): String? {
+        if (!canDrawOverlaysState.checkOrToast()) return null
+        val choices = choiceVar.params.values.ifEmpty { choiceVar.params.choices }
+        if (choices.isEmpty()) {
+            LogUtils.e(TAG, "Choice var '${choiceVar.name}' has no choices")
+            return null
+        }
+
+        return formMutex.withLock {
+            ChoiceOverlayWindow.requestChoice(
+                ctx = this,
+                title = "请选择 ${choiceVar.name}",
+                options = choices,
+            )
+            val result = withTimeoutOrNull(5 * 60 * 1000L) {
+                ChoiceOverlayWindow.resultFlow.first()
+            }
+            if (result == null) {
+                stopService(Intent(this, ChoiceOverlayWindow::class.java))
+                throw FormCanceledException()
+            }
+            result
         }
     }
 

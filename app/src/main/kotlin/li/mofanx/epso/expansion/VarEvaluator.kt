@@ -43,6 +43,7 @@ class FormCanceledException : Exception("Form canceled or timed out")
 class VarEvaluator(
     private val globalVars: List<Var>,
     private val formLauncher: suspend (formVar: Var) -> Map<String, String>? = { null },
+    private val choiceLauncher: suspend (choiceVar: Var) -> String? = { null },
 ) {
     /**
      * 对 [replace] 字符串进行变量替换。
@@ -135,9 +136,12 @@ class VarEvaluator(
                 }
 
                 "choice" -> {
-                    // Phase 3：与 random 相同（Phase 4 接入悬浮窗后升级为交互选择）
                     val choices = v.params.values.ifEmpty { v.params.choices }
-                    choices.randomOrNull()
+                    if (choices.isEmpty()) {
+                        null
+                    } else {
+                        choiceLauncher(v) ?: throw FormCanceledException()
+                    }
                 }
 
                 "shell" -> {
