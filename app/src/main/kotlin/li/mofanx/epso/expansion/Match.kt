@@ -66,6 +66,8 @@ data class Match(
     val restoreClipboardDelay: Int? = null,
     @SerialName("clipboard_threshold")
     val clipboardThreshold: Int? = null,
+    @SerialName("word_separators")
+    val wordSeparators: List<String> = emptyList(),
 ) {
     /** 运行时解析后的有效前缀（不参与 equals/序列化） */
     @Transient
@@ -96,6 +98,10 @@ data class Match(
     /** 运行时解析后的剪贴板阈值（默认 100） */
     @Transient
     var effectiveClipboardThreshold: Int = 100
+
+    /** 运行时解析后的单词分隔符（match > group > TriggerMatcher 默认） */
+    @Transient
+    var effectiveWordSeparators: Set<Char> = emptySet()
 
     /** 所有有效触发词（trigger + triggers 合并去重，并自动拼接 effectivePrefix/prefix） */
     val allTriggers: List<String>

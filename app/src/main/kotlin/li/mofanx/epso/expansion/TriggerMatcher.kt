@@ -19,6 +19,16 @@ import kotlinx.coroutines.sync.withLock
  */
 class TriggerMatcher {
 
+    companion object {
+        // 默认单词分隔符集合（与 espanso 保持一致）
+        val DEFAULT_WORD_SEPARATORS = setOf(
+            ' ', '\n', '\r', '\t', ',', '.', ';', ':', '!', '?',
+            '(', ')', '[', ']', '{', '}', '"', '\'', '/', '\\',
+            '-', '+', '*', '=', '<', '>', '&', '|', '@', '#', '%',
+            '^', '~', '`',
+        )
+    }
+
     // trigger → Match（每个 allTriggers 条目分别入库）
     private val exactMatches = LinkedHashMap<String, Match>()
 
@@ -26,14 +36,6 @@ class TriggerMatcher {
     private val regexMatches = LinkedHashMap<String, Pair<Regex, Match>>()
 
     private val mutex = Mutex()
-
-    // 单词分隔符集合（与 espansogo 保持一致）
-    private val wordSeparators = setOf(
-        ' ', '\n', '\r', '\t', ',', '.', ';', ':', '!', '?',
-        '(', ')', '[', ']', '{', '}', '"', '\'', '/', '\\',
-        '-', '+', '*', '=', '<', '>', '&', '|', '@', '#', '%',
-        '^', '~', '`',
-    )
 
     // ──────────────────────────────────────────────────────────────
     // 规则管理
@@ -122,15 +124,16 @@ class TriggerMatcher {
     ): Boolean {
         val checkLeft = match.word || match.leftWord
         val checkRight = match.word || match.rightWord
+        val separators = match.effectiveWordSeparators.takeIf { it.isNotEmpty() } ?: DEFAULT_WORD_SEPARATORS
 
         if (checkLeft) {
-            val leftOk = startIndex == 0 || text[startIndex - 1] in wordSeparators
+            val leftOk = startIndex == 0 || text[startIndex - 1] in separators
             if (!leftOk) return false
         }
 
         if (checkRight) {
             val afterIndex = startIndex + len
-            val rightOk = afterIndex >= text.length || text[afterIndex] in wordSeparators
+            val rightOk = afterIndex >= text.length || text[afterIndex] in separators
             if (!rightOk) return false
         }
 

@@ -38,6 +38,8 @@ data class MatchGroup(
     val restoreClipboardDelay: Int? = null,
     @SerialName("clipboard_threshold")
     val clipboardThreshold: Int? = null,
+    @SerialName("word_separators")
+    val wordSeparators: List<String> = emptyList(),
     @SerialName("filter_title")
     val filterTitle: String? = null,
     @SerialName("filter_exec")

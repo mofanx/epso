@@ -426,6 +426,11 @@ class YamlWorkspace(val dir: File) {
                 this.effectivePreserveClipboard = match.preserveClipboard ?: group.preserveClipboard ?: true
                 this.effectiveRestoreClipboardDelay = match.restoreClipboardDelay ?: group.restoreClipboardDelay ?: 300
                 this.effectiveClipboardThreshold = match.clipboardThreshold ?: group.clipboardThreshold ?: 100
+                this.effectiveWordSeparators = (match.wordSeparators.takeIf { it.isNotEmpty() }
+                    ?: group.wordSeparators.takeIf { it.isNotEmpty() }
+                    ?: TriggerMatcher.DEFAULT_WORD_SEPARATORS.map { it.toString() })
+                    .mapNotNull { it.firstOrNull() }
+                    .toSet()
             }
         }
         return group.copy(matches = resolved).apply { sourceFile = group.sourceFile }

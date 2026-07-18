@@ -120,6 +120,15 @@ class TriggerMatcherTest {
         assertNotNull(matcher.match("xabx"))   // no boundary restriction
     }
 
+    @Test
+    fun `custom word separators override default`() = runTest {
+        val m = Match(trigger = "hello", replace = "hi", word = true)
+            .apply { effectiveWordSeparators = setOf('#') }
+        matcher.addMatch(m)
+        assertNotNull(matcher.match("hello#world"))  // '#' is separator
+        assertNull(matcher.match("hello.world"))     // '.' is not separator
+    }
+
     // ── 正则匹配 ────────────────────────────────────────────────────
 
     @Test
