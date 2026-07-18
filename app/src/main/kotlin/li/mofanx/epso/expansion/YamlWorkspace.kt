@@ -40,6 +40,7 @@ class YamlWorkspace(val dir: File) {
             strictMode = false,         // 忽略未知字段，保持向前兼容
             encodeDefaults = false,     // 不输出默认值，保持 YAML 简洁
             encodingIndentationSize = 2,
+            sequenceBlockIndent = 2,    // 列表项缩进两格，和官方 espanso 格式对齐
         )
     )
 
@@ -59,7 +60,9 @@ class YamlWorkspace(val dir: File) {
         val visited = HashSet<String>()
 
         dir.autoMkdir()
-        val rootFiles = listYamlFiles(dir)
+        // 递归扫描工作区内所有 YAML 文件（与官方 espanso 默认 includes：
+        // ../match/**/[!_]*.yml 行为对齐，文件名以下划线开头的作为私有文件跳过）
+        val rootFiles = listAllYamlFiles(dir).filter { !it.name.startsWith("_") }
 
         for (file in rootFiles) {
             loadRecursive(file, matchDict, globalVars, visited, defaultPrefix, depth = 0)
