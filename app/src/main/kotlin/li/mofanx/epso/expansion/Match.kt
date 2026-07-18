@@ -70,6 +70,8 @@ data class Match(
     val wordSeparators: List<String> = emptyList(),
     @SerialName("undo_backspace")
     val undoBackspace: Boolean? = null,
+    @SerialName("pre_paste_delay")
+    val prePasteDelay: Int? = null,
 ) {
     /** 运行时解析后的有效前缀（不参与 equals/序列化） */
     @Transient
@@ -108,6 +110,10 @@ data class Match(
     /** 运行时解析后的 backspace 撤销开关（默认 true） */
     @Transient
     var effectiveUndoBackspace: Boolean = true
+
+    /** 运行时解析后的粘贴前延迟（默认 100ms） */
+    @Transient
+    var effectivePrePasteDelay: Int = 100
 
     /** 所有有效触发词（trigger + triggers 合并去重，并自动拼接 effectivePrefix/prefix） */
     val allTriggers: List<String>

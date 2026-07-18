@@ -313,7 +313,7 @@ class TextReplacer(private val a11yService: A11yService) {
 
             // 定位光标到原来触发词位置
             setCursorPosition(node, pastePosition)
-            delay(80)
+            delay(match.effectivePrePasteDelay.toLong())
 
             // 执行粘贴
             val pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
@@ -395,7 +395,7 @@ class TextReplacer(private val a11yService: A11yService) {
                 }
 
                 setCursorPosition(node, pastePosition)
-                delay(80)
+                delay(match.effectivePrePasteDelay.toLong())
                 val pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
                 delay(150)
 

@@ -432,6 +432,7 @@ class YamlWorkspace(val dir: File) {
                     .mapNotNull { it.firstOrNull() }
                     .toSet()
                 this.effectiveUndoBackspace = match.undoBackspace ?: group.undoBackspace ?: true
+                this.effectivePrePasteDelay = match.prePasteDelay ?: group.prePasteDelay ?: 100
             }
         }
         return group.copy(matches = resolved).apply { sourceFile = group.sourceFile }
