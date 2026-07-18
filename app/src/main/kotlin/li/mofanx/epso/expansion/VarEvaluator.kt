@@ -17,6 +17,9 @@ private const val VAR_SUFFIX = "}}"
 /** 防止 match 类型变量递归过深 */
 private const val MAX_MATCH_DEPTH = 5
 
+/** 用户取消表单或表单超时/无权限，外部应终止本次扩展 */
+class FormCanceledException : Exception("Form canceled or timed out")
+
 /**
  * 变量求值器
  *
@@ -29,13 +32,16 @@ private const val MAX_MATCH_DEPTH = 5
  * - random   → 从 params.choices 随机选一项
  * - choice   → 同 random（通过 choices/values 提供选项，Phase 4 接入悬浮窗后再升级）
  * - match    → 递归求值另一条规则的 replace（防循环，最大深度 5）
+ * - form     → 启动表单悬浮窗收集字段值，返回 Map<String, String>
  *
  * 不支持的类型（shell/script/javascript）：忽略，占位符保留原样。
  *
  * @param globalVars 全局变量（来自 MatchStore.globalVars）
+ * @param formLauncher 表单启动器：传入 form 类型变量，返回用户填写结果，取消/超时返回 null
  */
 class VarEvaluator(
     private val globalVars: List<Var>,
+    private val formLauncher: suspend (formVar: Var) -> Map<String, String>? = { null },
 ) {
     /**
      * 对 [replace] 字符串进行变量替换。
@@ -51,22 +57,17 @@ class VarEvaluator(
             localVars.forEach { put(it.name, it) }
         }.values
 
-        var result = replace
+        // 阶段一：求值所有变量
+        val values = mutableMapOf<String, Any?>()
         for (v in merged) {
-            result = applyVar(result, v, depth)
+            values[v.name] = evaluateVar(v, depth)
         }
-        return result
+
+        // 阶段二：替换 replace 中所有 {{name}} 或 {{name.field}}
+        return replacePlaceholders(replace, values)
     }
 
-    private suspend fun applyVar(text: String, v: Var, depth: Int): String {
-        val placeholder = "$VAR_PREFIX${v.name}$VAR_SUFFIX"
-        if (!text.contains(placeholder)) return text
-
-        val value = evaluateVar(v, depth) ?: return text
-        return text.replace(placeholder, value)
-    }
-
-    private suspend fun evaluateVar(v: Var, depth: Int): String? {
+    private suspend fun evaluateVar(v: Var, depth: Int): Any? {
         return try {
             when (v.type) {
                 "echo" -> v.params.echo
@@ -105,14 +106,55 @@ class VarEvaluator(
                     }
                 }
 
+                "form" -> {
+                    formLauncher(v) ?: throw FormCanceledException()
+                }
+
                 else -> {
                     LogUtils.d(TAG, "Unsupported var type '${v.type}' for '${v.name}', skipping")
                     null
                 }
             }
+        } catch (e: FormCanceledException) {
+            throw e
         } catch (e: Exception) {
             LogUtils.e(TAG, "Failed to evaluate var '${v.name}' (type=${v.type})", e)
             null
+        }
+    }
+
+    /**
+     * 统一替换 replace 字符串中的占位符。
+     * 支持：
+     * - {{varName}}
+     * - {{formName.fieldName}}
+     */
+    private fun replacePlaceholders(text: String, values: Map<String, Any?>): String {
+        val regex = Regex("""\{\{([^{}]+)\}\}""")
+        return regex.replace(text) { matchResult ->
+            val path = matchResult.groupValues[1].trim()
+            resolvePlaceholder(path, values) ?: matchResult.value
+        }
+    }
+
+    private fun resolvePlaceholder(path: String, values: Map<String, Any?>): String? {
+        val dotIndex = path.indexOf('.')
+        return if (dotIndex == -1) {
+            when (val v = values[path]) {
+                is String -> v
+                null -> null
+                else -> null
+            }
+        } else {
+            val name = path.substring(0, dotIndex)
+            val field = path.substring(dotIndex + 1)
+            val formValues = values[name]
+            if (formValues is Map<*, *>) {
+                @Suppress("UNCHECKED_CAST")
+                (formValues as Map<String, String>)[field]
+            } else {
+                null
+            }
         }
     }
 

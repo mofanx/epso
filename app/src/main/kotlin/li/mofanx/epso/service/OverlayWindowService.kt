@@ -9,6 +9,9 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.OnBackPressedDispatcherOwner
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,11 +20,14 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.core.animation.doOnEnd
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.setViewTreeLifecycleOwner
@@ -172,8 +178,20 @@ abstract class OverlayWindowService(
             setViewTreeSavedStateRegistryOwner(this@OverlayWindowService)
             setViewTreeLifecycleOwner(this@OverlayWindowService)
             setContent {
-                AppTheme(invertedTheme = true) {
-                    ComposeContent()
+                val backDispatcherOwner = remember {
+                    object : OnBackPressedDispatcherOwner {
+                        override val lifecycle: Lifecycle
+                            get() = this@OverlayWindowService.lifecycle
+                        override val onBackPressedDispatcher: OnBackPressedDispatcher
+                            get() = OnBackPressedDispatcher()
+                    }
+                }
+                CompositionLocalProvider(
+                    LocalOnBackPressedDispatcherOwner provides backDispatcherOwner,
+                ) {
+                    AppTheme(invertedTheme = true) {
+                        ComposeContent()
+                    }
                 }
             }
         }

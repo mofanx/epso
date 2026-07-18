@@ -55,6 +55,10 @@ data class VarParams(
 
     // match（递归触发另一条规则）
     val trigger: String? = null,
+
+    // form 表单变量
+    val layout: String? = null,
+    val fields: Map<String, FormField> = emptyMap(),
 )
 
 /**

@@ -63,28 +63,74 @@ class TextReplacer(private val a11yService: A11yService) {
             // 6. 执行替换
             performTextReplacement(node, newText, matchResult.startIndex + cursorOffset)
 
+        } catch (e: FormCanceledException) {
+            throw e
         } catch (e: Exception) {
             LogUtils.e(TAG, "Text replacement failed", e)
             false
         }
     }
 
-    // ── 兼容旧接口（ExpansionTestPage 不再调用，保留给可能的外部调用） ──────
+    /**
+     * 直接插入已求值后的替换文本（用于表单/搜索等需要先弹窗再替换的场景）
+     */
+    suspend fun replace(
+        node: AccessibilityNodeInfo,
+        originalText: String,
+        replacement: String,
+        matchResult: MatchResult,
+        match: Match,
+    ): Boolean {
+        return try {
+            // 1. 大小写传播
+            var finalReplacement = replacement
+            if (match.propagateCase) {
+                finalReplacement = applyPropagateCase(
+                    trigger = matchResult.matchedText,
+                    replace = finalReplacement,
+                    style = match.uppercaseStyle,
+                )
+            }
 
-    @Deprecated("Use replace(node, originalText, matchResult, varEvaluator)")
+            // 2. 处理光标标记 $|$
+            val (processedText, cursorOffset) = processCursorMarker(finalReplacement)
+
+            // 3. 构建新的完整文本（触发词区间替换为展开文本）
+            val newText = buildString {
+                append(originalText.substring(0, matchResult.startIndex))
+                append(processedText)
+                append(originalText.substring(matchResult.endIndex))
+            }
+
+            // 4. 记录替换前状态（供 undo 使用）
+            lastReplacement = originalText to node
+
+            // 5. 执行替换
+            performTextReplacement(node, newText, matchResult.startIndex + cursorOffset)
+        } catch (e: FormCanceledException) {
+            throw e
+        } catch (e: Exception) {
+            LogUtils.e(TAG, "Text replacement failed", e)
+            false
+        }
+    }
+
+    // ── 兼容旧接口（内部旧调用逐步迁移到带 match 的版本） ──────
+
+    @Deprecated("Use replace(node, originalText, replacement, matchResult, match)")
     suspend fun replace(
         node: AccessibilityNodeInfo,
         originalText: String,
         replacement: String,
         matchResult: MatchResult,
     ): Boolean {
-        val (processedText, cursorOffset) = processCursorMarker(replacement)
-        val newText = buildString {
-            append(originalText.substring(0, matchResult.startIndex))
-            append(processedText)
-            append(originalText.substring(matchResult.endIndex))
-        }
-        return performTextReplacement(node, newText, matchResult.startIndex + cursorOffset)
+        return replace(
+            node = node,
+            originalText = originalText,
+            replacement = replacement,
+            matchResult = matchResult,
+            match = matchResult.match,
+        )
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -113,6 +159,10 @@ class TextReplacer(private val a11yService: A11yService) {
         cursorPosition: Int,
     ): Boolean {
         return try {
+            // 先请求焦点，避免弹窗关闭后目标节点失焦导致 ACTION_SET_TEXT 无效
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            delay(50)
+
             val args = android.os.Bundle().apply {
                 putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
@@ -120,18 +170,26 @@ class TextReplacer(private val a11yService: A11yService) {
                 )
             }
             val success = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-            delay(50)
+            delay(100)
 
-            if (success) {
+            // 验证文本是否真正写入（部分 App 的自定义输入框 performAction 返回 true 但不生效）
+            if (success && node.refresh() && node.text?.toString() == newText) {
                 setCursorPosition(node, cursorPosition.coerceIn(0, newText.length))
-            } else {
-                // 回退：直接设置文本
-                node.text = newText
-                delay(50)
-                setCursorPosition(node, cursorPosition.coerceIn(0, newText.length))
+                return true
             }
 
-            true
+            // 回退：直接设置节点文本
+            node.text = newText
+            delay(100)
+            val refreshed = node.refresh()
+            val actualText = node.text?.toString()
+            if (refreshed && actualText == newText) {
+                setCursorPosition(node, cursorPosition.coerceIn(0, newText.length))
+                true
+            } else {
+                LogUtils.e(TAG, "Text replacement not reflected in UI, expected '$newText' got '$actualText'")
+                false
+            }
         } catch (e: Exception) {
             LogUtils.e(TAG, "performTextReplacement failed", e)
             false

@@ -1,5 +1,7 @@
 package li.mofanx.epso.expansion
 
+import android.content.Intent
+import android.graphics.Rect
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +15,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import li.mofanx.epso.a11y.isUseful
 import li.mofanx.epso.a11y.toA11yEvent
 import li.mofanx.epso.permission.canDrawOverlaysState
@@ -56,10 +60,16 @@ open class ExpansionService : A11yService() {
      * 每当 MatchStore.globalVars 变化时重建（globalVars 不可变，重建成本低）
      */
     @Volatile
-    private var varEvaluator = VarEvaluator(MatchStore.globalVars.value)
+    private var varEvaluator = VarEvaluator(
+        globalVars = MatchStore.globalVars.value,
+        formLauncher = { launchForm(it) },
+    )
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lastTextChanges = ConcurrentHashMap<String, TextChangeInfo>()
+
+    /** 表单弹窗互斥锁：同时只能显示一个表单 */
+    private val formMutex = Mutex()
 
     private val _expansionState = MutableStateFlow<ExpansionState>(ExpansionState.Idle)
     val expansionState: StateFlow<ExpansionState> = _expansionState
@@ -109,7 +119,12 @@ open class ExpansionService : A11yService() {
 
         // 全局变量变化 → 重建 VarEvaluator
         MatchStore.globalVars
-            .onEach { vars -> varEvaluator = VarEvaluator(vars) }
+            .onEach { vars ->
+                varEvaluator = VarEvaluator(
+                    globalVars = vars,
+                    formLauncher = { launchForm(it) },
+                )
+            }
             .launchIn(serviceScope)
     }
 
@@ -197,29 +212,29 @@ open class ExpansionService : A11yService() {
 
             val match = matchResult.match
 
-            // 表单分支：启动 FormOverlayWindow，等待用户填写后再替换
-            val resolvedMatchResult = if (match.isForm && !match.form.isNullOrEmpty()) {
-                val resolved = handleFormExpansion(match, matchResult) ?: run {
-                    _expansionState.value = ExpansionState.Idle
-                    return
+            // 表单/带 form 类型变量的规则需要先把触发词删掉、等悬浮窗关闭后再回填，
+            // 否则悬浮窗弹出期间原输入框会失焦，节点失效导致替换失败。
+            val success = when {
+                match.isForm && !match.form.isNullOrEmpty() -> {
+                    handleFormExpansion(match, matchResult, node, text)
                 }
-                resolved
-            } else {
-                matchResult
+                match.vars.any { it.type == "form" } -> {
+                    handleFormVarExpansion(match, matchResult, node, text)
+                }
+                else -> textReplacer.replace(
+                    node = node,
+                    originalText = text,
+                    matchResult = matchResult,
+                    varEvaluator = varEvaluator,
+                )
             }
 
-            val success = textReplacer.replace(
-                node = node,
-                originalText = text,
-                matchResult = resolvedMatchResult,
-                varEvaluator = varEvaluator,
-            )
-
             _expansionState.value = if (success) {
-                LogUtils.d(TAG, "Expanded: '${matchResult.matchedText}' -> '${resolvedMatchResult.match.replace}'")
+                val expandedText = match.replace.takeIf { it.isNotEmpty() } ?: match.form ?: ""
+                LogUtils.d(TAG, "Expanded: '${matchResult.matchedText}' -> '$expandedText'")
                 ExpansionState.Completed(
                     trigger = matchResult.matchedText,
-                    expandedText = resolvedMatchResult.match.replace.take(60),
+                    expandedText = expandedText.take(60),
                 )
             } else {
                 LogUtils.e(TAG, "Replacement failed for: '${matchResult.matchedText}'")
@@ -229,6 +244,8 @@ open class ExpansionService : A11yService() {
             delay(1000)
             _expansionState.value = ExpansionState.Idle
 
+        } catch (e: FormCanceledException) {
+            _expansionState.value = ExpansionState.Idle
         } catch (e: Exception) {
             _expansionState.value = ExpansionState.Failed(e.message ?: "Unknown error")
             LogUtils.e(TAG, "Expansion error", e)
@@ -237,33 +254,161 @@ open class ExpansionService : A11yService() {
 
     /**
      * 表单展开：
-     * 1. 启动 FormOverlayWindow
-     * 2. 等待用户填写结果（超时 5 分钟）
-     * 3. 根据结果生成新的 MatchResult（replace 字段替换为渲染后的文本）
-     * 返回 null 表示用户取消或超时。
+     * 1. 先删除触发词，避免悬浮窗存在期间再次触发匹配
+     * 2. 启动 FormOverlayWindow 等待用户填写
+     * 3. 悬浮窗关闭后重新找回原输入框，插入渲染后的文本
+     * 返回 false 表示用户取消/超时/失败。
      */
     private suspend fun handleFormExpansion(
         match: Match,
         matchResult: MatchResult,
-    ): MatchResult? {
+        node: AccessibilityNodeInfo,
+        text: String,
+    ): Boolean {
+        val startIndex = matchResult.startIndex
+        val endIndex = matchResult.endIndex
+        val textWithoutTrigger = text.removeRange(startIndex, endIndex)
+
+        // 先删除触发词，避免悬浮窗期间重复匹配
+        val clearArgs = android.os.Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                textWithoutTrigger,
+            )
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, clearArgs)
+        delay(50)
+        val cursorArgs = android.os.Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, startIndex)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, startIndex)
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, cursorArgs)
+
+        val sourceWindowId = node.windowId
+
         FormOverlayWindow.requestForm(this, match)
-        // 等待结果，超时 5 分钟后自动取消（关闭悬浮窗）
         val result = withTimeoutOrNull(5 * 60 * 1000L) {
             FormOverlayWindow.resultFlow.first()
         }
         if (result == null) {
-            // 超时：关闭悬浮窗
             stopService(android.content.Intent(this, FormOverlayWindow::class.java))
-            return null
+            return false
         }
 
         val renderedReplace = FormOverlayWindow.renderForm(
-            form = match.form ?: return null,
+            form = match.form ?: return false,
             values = result.values,
         )
-        // 构造一个 replace 已被渲染的临时 match
-        val resolvedMatch = match.copy(replace = renderedReplace)
-        return matchResult.copy(match = resolvedMatch)
+
+        delay(500)
+        val targetNode = resolveTargetNode(node, sourceWindowId)
+        val currentText = targetNode.text?.toString() ?: textWithoutTrigger
+        val insertIndex = startIndex.coerceIn(0, currentText.length)
+        val fakeMatchResult = MatchResult(
+            match = match.copy(replace = renderedReplace),
+            matchedText = "",
+            startIndex = insertIndex,
+            endIndex = insertIndex,
+        )
+
+        return textReplacer.replace(
+            node = targetNode,
+            originalText = currentText,
+            replacement = renderedReplace,
+            matchResult = fakeMatchResult,
+            match = fakeMatchResult.match,
+        )
+    }
+
+    /**
+     * 带 form 类型变量的规则展开：
+     * 1. 先删除触发词
+     * 2. 调用 VarEvaluator 求值（期间会弹出 form 悬浮窗收集字段）
+     * 3. 悬浮窗关闭后重新找回原输入框，插入求值后的文本
+     * 返回 false 表示用户取消/超时/失败。
+     */
+    private suspend fun handleFormVarExpansion(
+        match: Match,
+        matchResult: MatchResult,
+        node: AccessibilityNodeInfo,
+        text: String,
+    ): Boolean {
+        val startIndex = matchResult.startIndex
+        val endIndex = matchResult.endIndex
+        val textWithoutTrigger = text.removeRange(startIndex, endIndex)
+
+        // 先删除触发词，避免悬浮窗期间重复匹配
+        val clearArgs = android.os.Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                textWithoutTrigger,
+            )
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, clearArgs)
+        delay(50)
+        val cursorArgs = android.os.Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, startIndex)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, startIndex)
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, cursorArgs)
+
+        val sourceWindowId = node.windowId
+
+        val replacement = try {
+            varEvaluator.evaluate(match.replace, match.vars)
+        } catch (e: FormCanceledException) {
+            return false
+        }
+
+        delay(500)
+        val targetNode = resolveTargetNode(node, sourceWindowId)
+        val currentText = targetNode.text?.toString() ?: textWithoutTrigger
+        val insertIndex = startIndex.coerceIn(0, currentText.length)
+        val fakeMatchResult = MatchResult(
+            match = match,
+            matchedText = "",
+            startIndex = insertIndex,
+            endIndex = insertIndex,
+        )
+
+        return textReplacer.replace(
+            node = targetNode,
+            originalText = currentText,
+            replacement = replacement,
+            matchResult = fakeMatchResult,
+            match = match,
+        )
+    }
+
+    /**
+     * 启动表单悬浮窗并收集结果（给 VarEvaluator 的 form 类型变量使用）。
+     * 同一时间只能显示一个表单；用户取消/超时/无权限都返回 null。
+     */
+    private suspend fun launchForm(formVar: Var): Map<String, String>? {
+        if (!canDrawOverlaysState.checkOrToast()) return null
+        if (formVar.params.layout.isNullOrBlank() && formVar.params.fields.isEmpty()) {
+            LogUtils.e(TAG, "Form var '${formVar.name}' has neither layout nor fields")
+            return null
+        }
+
+        val layout = formVar.params.layout
+            ?: formVar.params.fields.keys.joinToString("\n") { "[[$it]]" }
+        val match = Match(
+            form = layout,
+            formFields = formVar.params.fields,
+        )
+
+        return formMutex.withLock {
+            FormOverlayWindow.requestForm(this, match)
+            val result = withTimeoutOrNull(5 * 60 * 1000L) {
+                FormOverlayWindow.resultFlow.first()
+            }
+            if (result == null) {
+                stopService(Intent(this, FormOverlayWindow::class.java))
+                throw FormCanceledException()
+            }
+            result.values
+        }
     }
 
     /**
@@ -365,8 +510,31 @@ open class ExpansionService : A11yService() {
     }
 
     /**
+     * 弹出悬浮窗后重新定位目标输入框。
+     * 优先复用触发时的原始节点（它本来就是输入框），刷新后仍有效就直接用；
+     * 否则在指定窗口中查找最合适的可编辑节点。
+     */
+    private fun resolveTargetNode(
+        originalNode: AccessibilityNodeInfo,
+        sourceWindowId: Int,
+    ): AccessibilityNodeInfo {
+        // 原始节点刷新后仍然指向输入框，直接复用，避免在聊天记录里误找
+        val refreshed = try { originalNode.refresh() } catch (e: Exception) { false }
+        if (refreshed && originalNode.isEditable) {
+            return originalNode
+        }
+        return findEditableNodeInWindow(sourceWindowId)
+            ?: findFocusedEditableNode()
+            ?: originalNode
+    }
+
+    /**
      * 在指定 windowId 的窗口中查找可编辑节点。
      * 悬浮窗弹出后 rootInActiveWindow 指向悬浮窗，需要通过 windows 列表找回原窗口。
+     * 元宝等 App 的聊天记录文本也可能被标记为 editable，因此优先：
+     * 1. 当前有焦点的可编辑节点
+     * 2. className 包含 EditText 的可编辑节点
+     * 3. 屏幕位置最靠下的可编辑节点（输入框一般在底部）
      */
     private fun findEditableNodeInWindow(windowId: Int): AccessibilityNodeInfo? {
         return try {
@@ -375,7 +543,7 @@ open class ExpansionService : A11yService() {
                 ?.let { root ->
                     root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
                         ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)?.takeIf { it.isEditable }
-                        ?: findFirstEditableNode(root)
+                        ?: findBestEditableNode(root)
                 }
         } catch (e: Exception) {
             LogUtils.e(TAG, "findEditableNodeInWindow failed", e)
@@ -384,16 +552,39 @@ open class ExpansionService : A11yService() {
     }
 
     /**
-     * 递归在树中找第一个可编辑节点（兜底方案）。
+     * 从节点树中挑选最合适的可编辑节点。
+     * 优先选真正可聚焦的，再优先 EditText 类名，最后选屏幕最靠下的。
      */
-    private fun findFirstEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        if (node.isEditable) return node
+    private fun findBestEditableNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        collectEditableNodes(root, candidates)
+        if (candidates.isEmpty()) return null
+
+        // 优先可聚焦的，避免消息气泡被选中
+        val focusable = candidates.filter { it.isFocusable }
+        val pool = if (focusable.isNotEmpty()) focusable else candidates
+
+        // 优先 EditText 类名
+        pool.firstOrNull { it.className?.toString()?.contains("EditText") == true }?.let { return it }
+
+        // 优先屏幕位置最靠下（输入框通常在底部）
+        return pool.maxByOrNull { node ->
+            val rect = Rect()
+            try {
+                node.getBoundsInScreen(rect)
+                rect.bottom
+            } catch (e: Exception) {
+                0
+            }
+        }
+    }
+
+    private fun collectEditableNodes(node: AccessibilityNodeInfo, out: MutableList<AccessibilityNodeInfo>) {
+        if (node.isEditable) out.add(node)
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            val result = findFirstEditableNode(child)
-            if (result != null) return result
+            collectEditableNodes(child, out)
         }
-        return null
     }
 
     /**

@@ -19,6 +19,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -119,85 +120,99 @@ class FormOverlayWindow : OverlayWindowService(positionKey = "form_overlay") {
         val fieldValues = remember {
             mutableStateMapOf<String, String>().also { map ->
                 fieldNames.forEach { name ->
-                    map[name] = match.formFields[name]?.default ?: ""
+                    val fieldConfig = match.formFields[name]
+                    val defaultValue = fieldConfig?.default ?: ""
+                    // list 类型未设置默认值时，默认选中第一个选项，避免用户不点开下拉直接确认导致空值
+                    val initialValue = if (fieldConfig?.type == "list" || fieldConfig?.values?.isNotEmpty() == true) {
+                        defaultValue.ifEmpty { fieldConfig.values.firstOrNull() ?: "" }
+                    } else {
+                        defaultValue
+                    }
+                    map[name] = initialValue
                 }
             }
         }
 
-        Column(
-            modifier = Modifier
-                .widthIn(min = 260.dp, max = 340.dp)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            shadowElevation = 8.dp,
+            tonalElevation = 4.dp,
         ) {
-            ClosableTitle(title = "填写表单")
+            Column(
+                modifier = Modifier
+                    .widthIn(min = 300.dp, max = 380.dp)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ClosableTitle(title = "填写表单")
 
-            // 表单模板预览（小字）
-            Text(
-                text = formTemplate.take(80) + if (formTemplate.length > 80) "…" else "",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                // 表单模板预览（小字）
+                Text(
+                    text = formTemplate.take(80) + if (formTemplate.length > 80) "…" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
-            Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(4.dp))
 
-            // 每个字段渲染对应控件
-            fieldNames.forEach { name ->
-                val fieldConfig = match.formFields[name]
-                val currentValue = fieldValues[name] ?: ""
+                // 每个字段渲染对应控件
+                fieldNames.forEach { name ->
+                    val fieldConfig = match.formFields[name]
+                    val currentValue = fieldValues[name] ?: ""
 
-                when {
-                    fieldConfig?.type == "list" || fieldConfig?.values?.isNotEmpty() == true -> {
-                        val options = fieldConfig.values
-                        ListField(
-                            label = name,
-                            options = options,
-                            selected = currentValue.ifEmpty { options.firstOrNull() ?: "" },
-                            onSelect = { fieldValues[name] = it },
-                        )
-                    }
-                    fieldConfig?.multiline == true || fieldConfig?.type == "multiline" -> {
-                        OutlinedTextField(
-                            value = currentValue,
-                            onValueChange = { fieldValues[name] = it },
-                            label = { Text(name) },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 3,
-                        )
-                    }
-                    else -> {
-                        OutlinedTextField(
-                            value = currentValue,
-                            onValueChange = { fieldValues[name] = it },
-                            label = { Text(name) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                        )
+                    when {
+                        fieldConfig?.type == "list" || fieldConfig?.values?.isNotEmpty() == true -> {
+                            val options = fieldConfig.values
+                            ListField(
+                                label = name,
+                                options = options,
+                                selected = currentValue.ifEmpty { options.firstOrNull() ?: "" },
+                                onSelect = { fieldValues[name] = it },
+                            )
+                        }
+                        fieldConfig?.multiline == true || fieldConfig?.type == "multiline" -> {
+                            OutlinedTextField(
+                                value = currentValue,
+                                onValueChange = { fieldValues[name] = it },
+                                label = { Text(name) },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 3,
+                            )
+                        }
+                        else -> {
+                            OutlinedTextField(
+                                value = currentValue,
+                                onValueChange = { fieldValues[name] = it },
+                                label = { Text(name) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(4.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = {
-                    formScope.launch {
-                        _resultFlow.emit(null)
-                        stopSelf()
-                    }
-                }) { Text("取消") }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = {
+                        formScope.launch {
+                            _resultFlow.emit(null)
+                            stopSelf()
+                        }
+                    }) { Text("取消") }
 
-                Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
 
-                TextButton(onClick = {
-                    formScope.launch {
-                        _resultFlow.emit(FormResult(fieldValues.toMap()))
-                        stopSelf()
-                    }
-                }) { Text("确认") }
+                    TextButton(onClick = {
+                        formScope.launch {
+                            _resultFlow.emit(FormResult(fieldValues.toMap()))
+                            stopSelf()
+                        }
+                    }) { Text("确认") }
+                }
             }
         }
     }
