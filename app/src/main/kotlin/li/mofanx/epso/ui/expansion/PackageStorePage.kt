@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +64,38 @@ data object PackageStoreRoute : NavKey
 
 // 每页包含的 tag 快速筛选
 private val POPULAR_TAGS = listOf("emoji", "development", "languages", "fun", "math", "shell")
+
+private data class FriendlyError(val title: String, val description: String)
+
+/** 把网络/HTTP 等技术错误翻译成用户能看懂的话 */
+private fun friendlyError(raw: String): FriendlyError {
+    val lowered = raw.lowercase()
+    return when {
+        "timeout" in lowered || "socket" in lowered ->
+            FriendlyError("连接超时", "访问 GitHub 包商店超时，国内网络可能受限。")
+        "unable to resolve host" in lowered || "unknownhost" in lowered || "nodename" in lowered ->
+            FriendlyError("网络不可用", "无法解析服务器地址，请检查网络连接。")
+        "ssl" in lowered || "certificate" in lowered || "cert" in lowered ->
+            FriendlyError("安全连接失败", "HTTPS 证书校验失败，可能是网络被拦截或设备时间不同步。")
+        "404" in raw || "not found" in lowered ->
+            FriendlyError("索引不存在", "远程包索引文件未找到，可能是上游正在更新。")
+        "http" in lowered ->
+            FriendlyError("服务器返回错误", raw)
+        else ->
+            FriendlyError("加载失败", "无法连接到包商店：$raw")
+    }
+}
+
+/** 安装/卸载失败时，把原始错误转成短提示 */
+private fun friendlyActionError(raw: String): String {
+    val lowered = raw.lowercase()
+    return when {
+        "timeout" in lowered || "socket" in lowered -> "连接超时，请检查网络或开启代理"
+        "unable to resolve host" in lowered || "unknownhost" in lowered -> "无法解析服务器地址"
+        "http" in lowered -> "下载失败（$raw）"
+        else -> raw
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -169,7 +203,7 @@ fun PackageStorePage() {
                                     actionMsg = ""
                                 }
                                 is HubResult.Failure -> {
-                                    actionMsg = "✗ ${result.error}"
+                                    actionMsg = "✗ ${friendlyActionError(result.error)}"
                                     isActing = false
                                 }
                             }
@@ -199,8 +233,11 @@ fun PackageStorePage() {
                 scrollBehavior = scrollBehavior,
                 title = {
                     Text(
-                        if (isLoading) "包商店"
-                        else "包商店 (${displayed.size}/${allPackages.size})"
+                        when {
+                            isLoading -> "包商店"
+                            loadError.isNotEmpty() -> "包商店"
+                            else -> "包商店 (${displayed.size}/${allPackages.size})"
+                        }
                     )
                 },
                 navigationIcon = {
@@ -252,17 +289,41 @@ fun PackageStorePage() {
         }
 
         if (loadError.isNotEmpty()) {
+            val err = friendlyError(loadError)
             Box(
                 modifier = Modifier.padding(paddingValues).fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    PerfIcon(PerfIcon.WarningAmber, tint = MaterialTheme.colorScheme.error)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                ) {
+                    PerfIcon(
+                        imageVector = PerfIcon.CloudOff,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(64.dp),
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = err.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
                     Spacer(Modifier.height(8.dp))
-                    Text("加载失败：$loadError",
+                    Text(
+                        text = err.description,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
                     Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "建议：检查网络、开启 VPN/代理，或稍后再试。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(24.dp))
                     OutlinedButton(onClick = {
                         scope.launch {
                             isLoading = true
@@ -277,7 +338,7 @@ fun PackageStorePage() {
                             }
                             isLoading = false
                         }
-                    }) { Text("重试") }
+                    }) { Text("重新加载") }
                 }
             }
             return@Scaffold

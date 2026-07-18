@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Api
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -200,6 +201,7 @@ object PerfIcon {
     val ArrowForward get() = Icons.AutoMirrored.Filled.ArrowForward
     val Image get() = Icons.Outlined.Image
     val WarningAmber get() = Icons.Default.WarningAmber
+    val CloudOff get() = Icons.Outlined.CloudOff
     val RocketLaunch get() = Icons.Outlined.RocketLaunch
     val CenterFocusWeak get() = Icons.Default.CenterFocusWeak
     val AutoMode get() = Icons.Outlined.AutoMode
