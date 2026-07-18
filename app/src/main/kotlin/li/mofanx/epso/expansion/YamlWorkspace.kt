@@ -423,6 +423,8 @@ class YamlWorkspace(val dir: File) {
                 this.effectiveFilterOs = match.filterOs ?: group.filterOs
                 this.effectiveEnable = match.enable ?: group.enable ?: true
                 this.effectiveBackend = match.forceMode.takeIf { it.isNotEmpty() } ?: group.backend
+                this.effectivePreserveClipboard = match.preserveClipboard ?: group.preserveClipboard ?: true
+                this.effectiveRestoreClipboardDelay = match.restoreClipboardDelay ?: group.restoreClipboardDelay ?: 300
             }
         }
         return group.copy(matches = resolved).apply { sourceFile = group.sourceFile }

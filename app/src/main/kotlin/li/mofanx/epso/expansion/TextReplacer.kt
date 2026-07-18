@@ -46,7 +46,7 @@ class TextReplacer(private val a11yService: A11yService) {
 
             // 图片输出走剪贴板粘贴
             if (!match.imagePath.isNullOrEmpty()) {
-                return performImageReplacement(node, originalText, matchResult, match.imagePath)
+                return performImageReplacement(node, originalText, matchResult, match.imagePath, match)
             }
 
             lastReplacement = originalText to node
@@ -58,6 +58,7 @@ class TextReplacer(private val a11yService: A11yService) {
                     matchResult = matchResult,
                     replacement = replacement,
                     cursorOffset = cursorOffset,
+                    match = match,
                 )
             } else {
                 performTextReplacement(
@@ -108,6 +109,7 @@ class TextReplacer(private val a11yService: A11yService) {
                     matchResult = matchResult,
                     replacement = processedText,
                     cursorOffset = cursorOffset,
+                    match = match,
                 )
             } else {
                 performTextReplacement(
@@ -280,11 +282,14 @@ class TextReplacer(private val a11yService: A11yService) {
         matchResult: MatchResult,
         replacement: CharSequence,
         cursorOffset: Int,
+        match: Match,
     ): Boolean {
         val leftPart = originalText.substring(0, matchResult.startIndex)
         val rightPart = originalText.substring(matchResult.endIndex)
         val textWithoutTrigger = leftPart + rightPart
         val pastePosition = matchResult.startIndex.coerceIn(0, textWithoutTrigger.length)
+
+        val previousClip = if (match.effectivePreserveClipboard) getCurrentClip() else null
 
         return try {
             if (!setClipboard(replacement.toString())) {
@@ -329,6 +334,11 @@ class TextReplacer(private val a11yService: A11yService) {
                 newText = buildFullText(originalText, matchResult, replacement),
                 cursorPosition = matchResult.startIndex + cursorOffset,
             )
+        } finally {
+            if (previousClip != null) {
+                delay(match.effectiveRestoreClipboardDelay.toLong())
+                restoreClip(previousClip)
+            }
         }
     }
 
@@ -340,6 +350,7 @@ class TextReplacer(private val a11yService: A11yService) {
         originalText: String,
         matchResult: MatchResult,
         imagePath: String,
+        match: Match,
     ): Boolean {
         return try {
             val file = File(imagePath.replace("%CONFIG%", try {
@@ -363,26 +374,35 @@ class TextReplacer(private val a11yService: A11yService) {
                         node, originalText, matchResult, "[图片: ${file.name}]"
                     )
 
-            cm.setPrimaryClip(ClipData.newUri(app.contentResolver, "expansion image", uri))
+            val previousClip = if (match.effectivePreserveClipboard) getCurrentClip() else null
 
-            val leftPart = originalText.substring(0, matchResult.startIndex)
-            val rightPart = originalText.substring(matchResult.endIndex)
-            val textWithoutTrigger = leftPart + rightPart
-            val pastePosition = matchResult.startIndex.coerceIn(0, textWithoutTrigger.length)
+            try {
+                cm.setPrimaryClip(ClipData.newUri(app.contentResolver, "expansion image", uri))
 
-            if (!performTextReplacement(node, textWithoutTrigger, pastePosition)) {
-                return insertFallbackText(node, originalText, matchResult, "[图片: ${file.name}]")
-            }
+                val leftPart = originalText.substring(0, matchResult.startIndex)
+                val rightPart = originalText.substring(matchResult.endIndex)
+                val textWithoutTrigger = leftPart + rightPart
+                val pastePosition = matchResult.startIndex.coerceIn(0, textWithoutTrigger.length)
 
-            setCursorPosition(node, pastePosition)
-            delay(80)
-            val pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-            delay(150)
+                if (!performTextReplacement(node, textWithoutTrigger, pastePosition)) {
+                    return insertFallbackText(node, originalText, matchResult, "[图片: ${file.name}]")
+                }
 
-            if (!pasted) {
-                insertFallbackText(node, originalText, matchResult, "[图片: ${file.name}]")
-            } else {
-                true
+                setCursorPosition(node, pastePosition)
+                delay(80)
+                val pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                delay(150)
+
+                if (!pasted) {
+                    insertFallbackText(node, originalText, matchResult, "[图片: ${file.name}]")
+                } else {
+                    true
+                }
+            } finally {
+                if (previousClip != null) {
+                    delay(match.effectiveRestoreClipboardDelay.toLong())
+                    restoreClip(previousClip)
+                }
             }
         } catch (e: Exception) {
             LogUtils.e(TAG, "Image replacement failed", e)
@@ -418,6 +438,33 @@ class TextReplacer(private val a11yService: A11yService) {
             node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
         } catch (e: Exception) {
             LogUtils.e(TAG, "setCursorPosition failed", e)
+        }
+    }
+
+    /**
+     * 获取当前剪贴板内容（用于 preserve_clipboard）
+     */
+    private fun getCurrentClip(): ClipData? {
+        return try {
+            val cm = a11yService.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager ?: return null
+            cm.primaryClip
+        } catch (e: Exception) {
+            LogUtils.e(TAG, "getCurrentClip failed", e)
+            null
+        }
+    }
+
+    /**
+     * 恢复剪贴板内容为之前的 clip
+     */
+    private fun restoreClip(clip: ClipData) {
+        try {
+            val cm = a11yService.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager ?: return
+            cm.setPrimaryClip(clip)
+        } catch (e: Exception) {
+            LogUtils.e(TAG, "restoreClip failed", e)
         }
     }
 

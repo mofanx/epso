@@ -60,6 +60,10 @@ data class Match(
     @SerialName("filter_os")
     val filterOs: String? = null,
     val enable: Boolean? = null,
+    @SerialName("preserve_clipboard")
+    val preserveClipboard: Boolean? = null,
+    @SerialName("restore_clipboard_delay")
+    val restoreClipboardDelay: Int? = null,
 ) {
     /** 运行时解析后的有效前缀（不参与 equals/序列化） */
     @Transient
@@ -80,6 +84,12 @@ data class Match(
     /** 运行时解析后的有效 backend（match force_mode > group backend） */
     @Transient
     var effectiveBackend: String = ""
+
+    /** 运行时解析后的剪贴板保留与恢复延迟（默认跟随 espanso：preserve=true, delay=300） */
+    @Transient
+    var effectivePreserveClipboard: Boolean = true
+    @Transient
+    var effectiveRestoreClipboardDelay: Int = 300
 
     /** 所有有效触发词（trigger + triggers 合并去重，并自动拼接 effectivePrefix/prefix） */
     val allTriggers: List<String>

@@ -32,6 +32,10 @@ data class MatchGroup(
     /** 文件级默认触发前缀，null 表示继承全局设置 */
     val prefix: String? = null,
     val backend: String = "",
+    @SerialName("preserve_clipboard")
+    val preserveClipboard: Boolean? = null,
+    @SerialName("restore_clipboard_delay")
+    val restoreClipboardDelay: Int? = null,
     @SerialName("filter_title")
     val filterTitle: String? = null,
     @SerialName("filter_exec")
