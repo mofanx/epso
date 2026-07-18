@@ -132,6 +132,14 @@ class YamlWorkspace(val dir: File) {
     }
 
     /**
+     * 直接写入原始 YAML 文本（保留格式，原子写入）
+     */
+    suspend fun writeRawFile(file: File, content: String) = withContext(Dispatchers.IO) {
+        file.parentFile?.autoMkdir()
+        writeAtomic(file, content)
+    }
+
+    /**
      * 删除规则文件
      */
     fun deleteFile(file: File) {

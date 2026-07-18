@@ -71,6 +71,7 @@ import li.mofanx.epso.permission.AuthDialog
 import li.mofanx.epso.permission.shizukuGrantedState
 import li.mofanx.epso.permission.updatePermissionState
 import li.mofanx.epso.service.A11yService
+import li.mofanx.epso.service.HttpService
 import li.mofanx.epso.service.StatusService
 import li.mofanx.epso.shizuku.automationRegisteredExceptionFlow
 import li.mofanx.epso.shizuku.defaultShizukuContext
@@ -237,6 +238,7 @@ class MainActivity : ComponentActivity() {
         }
         watchKeyboardVisible()
         StatusService.autoStart()
+        HttpService.autoStart()
         setContent {
             val latestInsets = TopAppBarDefaults.windowInsets
             val density = LocalDensity.current

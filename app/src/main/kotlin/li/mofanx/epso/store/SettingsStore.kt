@@ -9,6 +9,7 @@ data class SettingsStore(
     val excludeFromRecents: Boolean = false,
     val httpServerPort: Int = 8888,
     val httpApiToken: String = "",
+    val httpServerAutoStart: Boolean = true,
     val enableDarkTheme: Boolean? = null,
     val enableDynamicColor: Boolean = true,
     val useSystemToast: Boolean = false,

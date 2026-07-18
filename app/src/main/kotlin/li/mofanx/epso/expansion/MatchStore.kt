@@ -151,6 +151,41 @@ object MatchStore {
     }
 
     /**
+     * 按索引更新指定文件中的规则
+     */
+    suspend fun updateMatchByIndex(groupFile: File, index: Int, match: Match) {
+        require(index >= 0) { "rule index must be non-negative" }
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val group = workspace.readFile(groupFile, defaultPrefix)
+                require(index < group.matches.size) { "rule index out of bounds" }
+                val newMatches = group.matches.toMutableList().apply { this[index] = match }
+                workspace.writeFile(groupFile, group.copy(matches = newMatches))
+            }
+        }
+        reload()
+        autoPush()
+    }
+
+    /**
+     * 按索引删除指定文件中的规则
+     */
+    suspend fun deleteMatchByIndex(groupFile: File, index: Int) {
+        require(index >= 0) { "rule index must be non-negative" }
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val group = workspace.readFile(groupFile, defaultPrefix)
+                require(index < group.matches.size) { "rule index out of bounds" }
+                workspace.writeFile(groupFile, group.copy(
+                    matches = group.matches.filterIndexed { i, _ -> i != index }
+                ))
+            }
+        }
+        reload()
+        autoPush()
+    }
+
+    /**
      * 更新某文件的全局变量
      */
     suspend fun updateGlobalVars(groupFile: File, vars: List<Var>) {
@@ -298,6 +333,54 @@ object MatchStore {
      * 获取工作区目录
      */
     fun getWorkspaceDir(): File = workspace.dir
+
+    /**
+     * 列出工作区内所有 YAML 文件的相对路径（不含扩展名）
+     */
+    fun listFilePaths(): List<String> = workspace.listFiles().map { file ->
+        file.relativeTo(workspace.dir).path
+            .removeSuffix(".yml")
+            .removeSuffix(".yaml")
+    }
+
+    /**
+     * 读取 YAML 文件原始文本
+     */
+    suspend fun readRawFile(file: File): String = withContext(Dispatchers.IO) {
+        file.readText()
+    }
+
+    /**
+     * 验证 YAML 文本是否能解析为 MatchGroup
+     */
+    fun validateRawYaml(content: String, sourceFile: String = ""): MatchGroup {
+        return workspace.parseYaml(content, sourceFile)
+    }
+
+    /**
+     * 直接写入原始 YAML 文本并重新加载
+     */
+    suspend fun writeRawFile(file: File, content: String): Boolean = writeMutex.withLock {
+        withContext(Dispatchers.IO) {
+            validateRawYaml(content, file.absolutePath)
+            workspace.writeRawFile(file, content)
+        }
+        reload()
+        autoPush()
+        true
+    }
+
+    /**
+     * 删除文件并重新加载
+     */
+    suspend fun deleteRawFile(file: File): Boolean = writeMutex.withLock {
+        withContext(Dispatchers.IO) {
+            workspace.deleteFile(file)
+        }
+        reload()
+        autoPush()
+        true
+    }
 
     /**
      * 保存后自动推送（在每次写操作后调用）
