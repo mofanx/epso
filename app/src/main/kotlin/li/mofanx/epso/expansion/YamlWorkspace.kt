@@ -158,6 +158,34 @@ class YamlWorkspace(val dir: File) {
     }
 
     /**
+     * 当全局 triggerPrefix 发生变化时，对旧文件做一次触发词前缀迁移：
+     * 把文件中仍带有旧前缀或新前缀的 trigger 统一剥离前缀， persisted 为相对新前缀的裸词。
+     * 显式设置了 match.prefix 或 group.prefix 的文件/规则不参与迁移。
+     */
+    suspend fun migratePrefix(oldPrefix: String, newPrefix: String) = withContext(Dispatchers.IO) {
+        val prefixes = listOf(newPrefix, oldPrefix).filter { it.isNotEmpty() }.distinct()
+        for (file in listFiles()) {
+            val group = parseYaml(file.readText(), file.absolutePath)
+            if (group.prefix != null) continue
+            var changed = false
+            val newMatches = group.matches.map { match ->
+                if (match.prefix != null) return@map match
+                val newTrigger = match.trigger.stripFirstPrefix(prefixes)
+                val newTriggers = match.triggers.map { it.stripFirstPrefix(prefixes) }
+                if (newTrigger != match.trigger || newTriggers != match.triggers) {
+                    changed = true
+                    match.copy(trigger = newTrigger, triggers = newTriggers)
+                } else {
+                    match
+                }
+            }
+            if (changed) {
+                writeFile(file, group.copy(matches = newMatches))
+            }
+        }
+    }
+
+    /**
      * 导入外部 YAML 文件到工作区
      */
     suspend fun importFile(name: String, input: java.io.InputStream): File = withContext(Dispatchers.IO) {
@@ -607,4 +635,27 @@ internal fun File.isValidWorkspace(): Boolean {
     if (isFile) return false
     if (!exists() && !mkdirs()) return false
     return canWrite()
+}
+
+/** 从字符串中移除第一个匹配的前缀（用于旧规则前缀迁移） */
+private fun String.stripFirstPrefix(prefixes: List<String>): String {
+    for (prefix in prefixes.sortedByDescending { it.length }) {
+        if (prefix.isNotEmpty() && startsWith(prefix)) return removePrefix(prefix)
+    }
+    return this
+}
+
+/**
+ * 将 incoming Match 的 trigger/triggers 做一次性归一化：
+ * 如果 match.prefix 未显式设置，则把当前 effectivePrefix 从触发词头部剥离。
+ * 这样新规则写入文件时不会把全局前缀 baked 进 YAML，后续修改前缀时才能自动迁移。
+ */
+internal fun Match.normalizedForGroup(group: MatchGroup, defaultPrefix: String): Match {
+    if (prefix != null) return this
+    val effectivePrefix = group.prefix ?: defaultPrefix
+    if (effectivePrefix.isEmpty()) return this
+    return copy(
+        trigger = trigger.removePrefix(effectivePrefix),
+        triggers = triggers.map { it.removePrefix(effectivePrefix) },
+    )
 }

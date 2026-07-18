@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -76,9 +77,23 @@ object MatchStore {
         updateWorkspace(workspacePath)
         appScope.launchTry(Dispatchers.IO) {
             ensureDefaultFile()
+            runInitialPrefixMigration()
             reload()
             // 全局前缀/工作区路径变化时自动重载
             collectSettings()
+        }
+    }
+
+    /**
+     * 应用启动时检测触发前缀是否发生过变化；若变化则对旧规则做一次一次性迁移。
+     */
+    private suspend fun runInitialPrefixMigration() {
+        val store = storeFlow.value
+        if (store.triggerPrefix != store.lastTriggerPrefix) {
+            writeMutex.withLock {
+                workspace.migratePrefix(store.lastTriggerPrefix, store.triggerPrefix)
+            }
+            storeFlow.value = store.copy(lastTriggerPrefix = store.triggerPrefix)
         }
     }
 
@@ -111,7 +126,8 @@ object MatchStore {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
                 val group = workspace.readFile(groupFile, defaultPrefix)
-                workspace.writeFile(groupFile, group.copy(matches = group.matches + match))
+                val normalized = match.normalizedForGroup(group, defaultPrefix)
+                workspace.writeFile(groupFile, group.copy(matches = group.matches + normalized))
             }
         }
         reload()
@@ -125,8 +141,10 @@ object MatchStore {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
                 val group = workspace.readFile(groupFile, defaultPrefix)
+                val search = oldMatch.normalizedForGroup(group, defaultPrefix)
+                val replacement = newMatch.normalizedForGroup(group, defaultPrefix)
                 workspace.writeFile(groupFile, group.copy(
-                    matches = group.matches.map { if (it == oldMatch) newMatch else it }
+                    matches = group.matches.map { if (it == search) replacement else it }
                 ))
             }
         }
@@ -141,8 +159,9 @@ object MatchStore {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
                 val group = workspace.readFile(groupFile, defaultPrefix)
+                val normalized = match.normalizedForGroup(group, defaultPrefix)
                 workspace.writeFile(groupFile, group.copy(
-                    matches = group.matches.filter { it != match }
+                    matches = group.matches.filter { it != normalized }
                 ))
             }
         }
@@ -159,7 +178,8 @@ object MatchStore {
             withContext(Dispatchers.IO) {
                 val group = workspace.readFile(groupFile, defaultPrefix)
                 require(index < group.matches.size) { "rule index out of bounds" }
-                val newMatches = group.matches.toMutableList().apply { this[index] = match }
+                val normalized = match.normalizedForGroup(group, defaultPrefix)
+                val newMatches = group.matches.toMutableList().apply { this[index] = normalized }
                 workspace.writeFile(groupFile, group.copy(matches = newMatches))
             }
         }
@@ -476,9 +496,19 @@ object MatchStore {
 
     private fun collectSettings() {
         appScope.launchTry(Dispatchers.IO) {
+            var previousPrefix = storeFlow.value.triggerPrefix
             storeFlow.collect { store ->
                 updateWorkspace(store.expansionWorkspacePath)
                 ensureDefaultFile()
+                val currentPrefix = store.triggerPrefix
+                if (currentPrefix != previousPrefix) {
+                    writeMutex.withLock {
+                        workspace.migratePrefix(previousPrefix, currentPrefix)
+                    }
+                    val migrated = store.copy(lastTriggerPrefix = currentPrefix)
+                    appScope.launch(Dispatchers.IO) { storeFlow.value = migrated }.join()
+                    previousPrefix = currentPrefix
+                }
                 reload()
             }
         }

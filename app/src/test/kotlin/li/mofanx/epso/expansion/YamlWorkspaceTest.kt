@@ -246,6 +246,51 @@ class YamlWorkspaceTest {
         assertEquals("console.log('hi')", moved.readText())
     }
 
+    // ── trigger prefix migration / normalization ──────────────────
+
+    @Test
+    fun `normalizedForGroup strips default prefix from incoming match`() {
+        val group = MatchGroup()
+        val m = Match(trigger = ":hello", replace = "Hello")
+        val normalized = m.normalizedForGroup(group, ":")
+        assertEquals("hello", normalized.trigger)
+    }
+
+    @Test
+    fun `migratePrefix strips old and new prefixes when global prefix changes`() = runTest {
+        val f = ws.createFile("base")
+        ws.writeFile(
+            f,
+            MatchGroup(
+                matches = listOf(
+                    Match(trigger = ":hello", replace = "Hello"),
+                    Match(trigger = "!world", replace = "World"),
+                    Match(trigger = "plain", replace = "Plain"),
+                ),
+            ),
+        )
+        ws.migratePrefix(":", "!")
+        val (dict, _) = ws.loadAll("!")
+        assertTrue("!hello" in dict, "Expected !hello, got: ${dict.keys}")
+        assertTrue("!world" in dict, "Expected !world, got: ${dict.keys}")
+        assertTrue("!plain" in dict, "Expected !plain, got: ${dict.keys}")
+    }
+
+    @Test
+    fun `migratePrefix skips files with explicit group prefix`() = runTest {
+        val f = ws.createFile("base")
+        ws.writeFile(
+            f,
+            MatchGroup(
+                prefix = "@",
+                matches = listOf(Match(trigger = "@hi", replace = "Hi")),
+            ),
+        )
+        ws.migratePrefix(":", "!")
+        val (dict, _) = ws.loadAll("!")
+        assertTrue("@hi" in dict, "Expected @hi, got: ${dict.keys}")
+    }
+
     // ── group-level defaults ────────────────────────────────────────
 
     @Test

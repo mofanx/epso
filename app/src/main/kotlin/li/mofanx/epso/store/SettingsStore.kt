@@ -21,6 +21,8 @@ data class SettingsStore(
     val expansionWorkspacePath: String = "",
     /** 默认触发前缀，空字符串表示无前缀 */
     val triggerPrefix: String = ":",
+    /** 上一次生效的触发前缀，用于检测前缀变化并对旧规则做一次迁移 */
+    val lastTriggerPrefix: String = ":",
     /** 防抖延迟（毫秒），输入停止后等待此时间再触发匹配 */
     val expansionDebounceMs: Long = 300L,
     /** 快速搜索触发词，输入后弹出悬浮搜索窗（空 = 禁用） */
