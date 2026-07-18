@@ -68,6 +68,8 @@ data class Match(
     val clipboardThreshold: Int? = null,
     @SerialName("word_separators")
     val wordSeparators: List<String> = emptyList(),
+    @SerialName("undo_backspace")
+    val undoBackspace: Boolean? = null,
 ) {
     /** 运行时解析后的有效前缀（不参与 equals/序列化） */
     @Transient
@@ -102,6 +104,10 @@ data class Match(
     /** 运行时解析后的单词分隔符（match > group > TriggerMatcher 默认） */
     @Transient
     var effectiveWordSeparators: Set<Char> = emptySet()
+
+    /** 运行时解析后的 backspace 撤销开关（默认 true） */
+    @Transient
+    var effectiveUndoBackspace: Boolean = true
 
     /** 所有有效触发词（trigger + triggers 合并去重，并自动拼接 effectivePrefix/prefix） */
     val allTriggers: List<String>

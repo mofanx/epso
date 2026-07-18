@@ -43,6 +43,7 @@ open class ExpansionService : A11yService() {
 
     companion object {
         private const val TAG = "ExpansionService"
+        private const val UNDO_BACKSPACE_TIMEOUT_MS = 2000L
 
         val isRunning = MutableStateFlow(false)
 
@@ -71,6 +72,10 @@ open class ExpansionService : A11yService() {
 
     /** 表单弹窗互斥锁：同时只能显示一个表单 */
     private val formMutex = Mutex()
+
+    /** backspace 撤销相关状态 */
+    private var lastExpandedText: String? = null
+    private var lastExpandedTime: Long = 0
 
     private val _expansionState = MutableStateFlow<ExpansionState>(ExpansionState.Idle)
     val expansionState: StateFlow<ExpansionState> = _expansionState
@@ -155,6 +160,9 @@ open class ExpansionService : A11yService() {
         val debounceMs = storeFlow.value.expansionDebounceMs
 
         serviceScope.launch {
+            // 若用户刚完成一次扩展并按下了 Backspace（删除末尾一个字符），则撤销
+            if (tryUndoBackspace(node, currentText)) return@launch
+
             val now = System.currentTimeMillis()
             lastTextChanges[packageName] = TextChangeInfo(currentText, now)
             delay(debounceMs)
@@ -244,6 +252,11 @@ open class ExpansionService : A11yService() {
             _expansionState.value = if (success) {
                 val expandedText = match.replace.takeIf { it.isNotEmpty() } ?: match.form ?: ""
                 LogUtils.d(TAG, "Expanded: '${matchResult.matchedText}' -> '$expandedText'")
+                // 记录扩展后文本，用于 backspace 撤销
+                if (match.effectiveUndoBackspace) {
+                    lastExpandedText = node.text?.toString() ?: text
+                    lastExpandedTime = System.currentTimeMillis()
+                }
                 ExpansionState.Completed(
                     trigger = matchResult.matchedText,
                     expandedText = expandedText.take(60),
@@ -548,6 +561,31 @@ open class ExpansionService : A11yService() {
             LogUtils.e(TAG, "Search expand replacement failed")
             _expansionState.value = ExpansionState.Failed("Search expand failed")
         }
+    }
+
+    /**
+     * 检测并执行 backspace 撤销。
+     * 条件：最近一次扩展后 2 秒内，当前文本正好是扩展后文本删除末尾一个字符。
+     */
+    private suspend fun tryUndoBackspace(
+        node: AccessibilityNodeInfo,
+        currentText: String,
+    ): Boolean {
+        val expanded = lastExpandedText ?: return false
+        val elapsed = System.currentTimeMillis() - lastExpandedTime
+        if (elapsed > UNDO_BACKSPACE_TIMEOUT_MS) {
+            lastExpandedText = null
+            return false
+        }
+
+        if (currentText.length == expanded.length - 1 && currentText == expanded.dropLast(1)) {
+            LogUtils.d(TAG, "Backspace undo triggered")
+            if (textReplacer.undo(node)) {
+                lastExpandedText = null
+                return true
+            }
+        }
+        return false
     }
 
     /**

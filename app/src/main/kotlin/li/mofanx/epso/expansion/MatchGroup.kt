@@ -40,6 +40,8 @@ data class MatchGroup(
     val clipboardThreshold: Int? = null,
     @SerialName("word_separators")
     val wordSeparators: List<String> = emptyList(),
+    @SerialName("undo_backspace")
+    val undoBackspace: Boolean? = null,
     @SerialName("filter_title")
     val filterTitle: String? = null,
     @SerialName("filter_exec")

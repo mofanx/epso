@@ -431,6 +431,7 @@ class YamlWorkspace(val dir: File) {
                     ?: TriggerMatcher.DEFAULT_WORD_SEPARATORS.map { it.toString() })
                     .mapNotNull { it.firstOrNull() }
                     .toSet()
+                this.effectiveUndoBackspace = match.undoBackspace ?: group.undoBackspace ?: true
             }
         }
         return group.copy(matches = resolved).apply { sourceFile = group.sourceFile }
