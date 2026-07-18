@@ -245,4 +245,29 @@ class YamlWorkspaceTest {
         assertFalse(script.exists())
         assertEquals("console.log('hi')", moved.readText())
     }
+
+    // ── anchors/aliases ─────────────────────────────────────────────
+
+    @Test
+    fun `parseYaml resolves YAML anchors and aliases`() {
+        val yaml = """
+            anchors:
+              - &script1 |
+                fruits = ["apple", "banana"]
+            matches:
+              - trigger: ":test"
+                replace: "{{output}}"
+                vars:
+                  - name: output
+                    type: script
+                    params:
+                      args: [python, -c, *script1]
+        """.trimIndent()
+        val group = ws.parseYaml(yaml)
+        assertEquals(1, group.matches.size)
+        assertEquals(
+            listOf("python", "-c", "fruits = [\"apple\", \"banana\"]\n"),
+            group.matches[0].vars[0].params.args,
+        )
+    }
 }

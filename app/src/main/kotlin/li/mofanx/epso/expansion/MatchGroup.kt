@@ -31,6 +31,7 @@ data class MatchGroup(
     val imports: List<String> = emptyList(),
     /** 文件级默认触发前缀，null 表示继承全局设置 */
     val prefix: String? = null,
+    val backend: String = "",
     @SerialName("filter_title")
     val filterTitle: String? = null,
     @SerialName("filter_exec")

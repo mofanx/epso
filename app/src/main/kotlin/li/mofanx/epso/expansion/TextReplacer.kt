@@ -215,11 +215,12 @@ class TextReplacer(private val a11yService: A11yService) {
 
     /**
      * 判断当前 match 是否需要走剪贴板+粘贴。
+     * 优先级：match.force_clipboard > effectiveBackend（force_mode / group backend）
      */
     private fun shouldUseClipboard(match: Match): Boolean {
         return match.forceClipboard
-            || match.forceMode.equals("clipboard", ignoreCase = true)
-            || match.forceMode.equals("keys", ignoreCase = true) // 手机上无法模拟键入，回退到剪贴板
+            || match.effectiveBackend.equals("clipboard", ignoreCase = true)
+            || match.effectiveBackend.equals("keys", ignoreCase = true) // 手机上无法模拟键入，回退到剪贴板
     }
 
     /**

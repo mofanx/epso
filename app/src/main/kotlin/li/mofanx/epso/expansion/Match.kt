@@ -77,6 +77,10 @@ data class Match(
     @Transient
     var effectiveEnable: Boolean = true
 
+    /** 运行时解析后的有效 backend（match force_mode > group backend） */
+    @Transient
+    var effectiveBackend: String = ""
+
     /** 所有有效触发词（trigger + triggers 合并去重，并自动拼接 effectivePrefix/prefix） */
     val allTriggers: List<String>
         get() = (listOf(trigger) + triggers)

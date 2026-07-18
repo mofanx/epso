@@ -37,10 +37,11 @@ class YamlWorkspace(val dir: File) {
 
     private val yaml = Yaml(
         configuration = YamlConfiguration(
-            strictMode = false,         // 忽略未知字段，保持向前兼容
-            encodeDefaults = false,     // 不输出默认值，保持 YAML 简洁
+            strictMode = false,                         // 忽略未知字段，保持向前兼容
+            encodeDefaults = false,                     // 不输出默认值，保持 YAML 简洁
             encodingIndentationSize = 2,
-            sequenceBlockIndent = 2,    // 列表项缩进两格，和官方 espanso 格式对齐
+            sequenceBlockIndent = 2,                    // 列表项缩进两格，和官方 espanso 格式对齐
+            allowAnchorsAndAliases = true,              // 启用 YAML anchors/aliases
         )
     )
 
@@ -421,6 +422,7 @@ class YamlWorkspace(val dir: File) {
                 this.effectiveFilterClass = match.filterClass ?: group.filterClass
                 this.effectiveFilterOs = match.filterOs ?: group.filterOs
                 this.effectiveEnable = match.enable ?: group.enable ?: true
+                this.effectiveBackend = match.forceMode.takeIf { it.isNotEmpty() } ?: group.backend
             }
         }
         return group.copy(matches = resolved).apply { sourceFile = group.sourceFile }
