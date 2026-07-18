@@ -34,15 +34,48 @@ data class Match(
     val propagateCase: Boolean = false,
     @SerialName("uppercase_style")
     val uppercaseStyle: String = "uppercase",   // uppercase / capitalize / capitalize_words
+    @SerialName("force_clipboard")
+    val forceClipboard: Boolean = false,
+    @SerialName("force_mode")
+    val forceMode: String = "",                // clipboard / keys / auto
     val vars: List<Var> = emptyList(),
     val form: String? = null,
     @SerialName("form_fields")
     val formFields: Map<String, FormField> = emptyMap(),
+    val markdown: String? = null,
+    val html: String? = null,
+    @SerialName("image_path")
+    val imagePath: String? = null,
+    val paragraph: Boolean = false,
+    @SerialName("search_terms")
+    val searchTerms: List<String> = emptyList(),
+    val comment: String? = null,
     val label: String? = null,
+    @SerialName("filter_title")
+    val filterTitle: String? = null,
+    @SerialName("filter_exec")
+    val filterExec: String? = null,
+    @SerialName("filter_class")
+    val filterClass: String? = null,
+    @SerialName("filter_os")
+    val filterOs: String? = null,
+    val enable: Boolean? = null,
 ) {
     /** 运行时解析后的有效前缀（不参与 equals/序列化） */
     @Transient
     var effectivePrefix: String? = null
+
+    /** 运行时解析后的有效过滤与开关（由 group 级继承） */
+    @Transient
+    var effectiveFilterTitle: String? = null
+    @Transient
+    var effectiveFilterExec: String? = null
+    @Transient
+    var effectiveFilterClass: String? = null
+    @Transient
+    var effectiveFilterOs: String? = null
+    @Transient
+    var effectiveEnable: Boolean = true
 
     /** 所有有效触发词（trigger + triggers 合并去重，并自动拼接 effectivePrefix/prefix） */
     val allTriggers: List<String>
@@ -54,8 +87,56 @@ data class Match(
     val isRegex: Boolean get() = regex.isNotEmpty()
     val isForm: Boolean get() = form != null
 
+    /** 是否有可用的输出内容 */
+    val hasOutput: Boolean
+        get() = replace.isNotEmpty() || isForm || !markdown.isNullOrEmpty()
+            || !html.isNullOrEmpty() || !imagePath.isNullOrEmpty()
+
     val isValid: Boolean
-        get() = (allTriggers.isNotEmpty() || isRegex) && (replace.isNotEmpty() || isForm)
+        get() = (allTriggers.isNotEmpty() || isRegex) && hasOutput
+
+    /**
+     * 判断当前规则是否对指定 App 上下文生效。
+     * @param packageName 应用包名（对应 filter_exec）
+     * @param className   当前节点/窗口类名（对应 filter_class）
+     * @param title       当前窗口标题（对应 filter_title）
+     * 规则：设置了哪个过滤器，哪个就必须匹配；全部设置了的过滤器都匹配才算生效。
+     */
+    fun isActiveFor(
+        packageName: String? = null,
+        className: String? = null,
+        title: String? = null,
+    ): Boolean {
+        if (!effectiveEnable) return false
+
+        val filterTitle = effectiveFilterTitle
+        val filterExec = effectiveFilterExec
+        val filterClass = effectiveFilterClass
+        val filterOs = effectiveFilterOs
+
+        if (filterTitle != null) {
+            if (title == null || !title.matchesFilter(filterTitle)) return false
+        }
+        if (filterExec != null) {
+            if (packageName == null || !packageName.matchesFilter(filterExec)) return false
+        }
+        if (filterClass != null) {
+            if (className == null || !className.matchesFilter(filterClass)) return false
+        }
+        if (filterOs != null) {
+            if (!"android".matchesFilter(filterOs)) return false
+        }
+        return true
+    }
+
+    private fun String.matchesFilter(pattern: String): Boolean {
+        return try {
+            Regex(pattern).containsMatchIn(this)
+        } catch (e: Exception) {
+            // 正则无效时退化为包含子串
+            this.contains(pattern)
+        }
+    }
 }
 
 

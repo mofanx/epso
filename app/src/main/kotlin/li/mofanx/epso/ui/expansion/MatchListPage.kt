@@ -106,7 +106,11 @@ fun MatchListPage(route: MatchListRoute) {
                         m.allTriggers.any { it.lowercase().contains(q) } ||
                             m.regex.lowercase().contains(q) ||
                             m.replace.lowercase().contains(q) ||
-                            (m.label?.lowercase()?.contains(q) == true)
+                            m.markdown?.lowercase()?.contains(q) == true ||
+                            m.html?.lowercase()?.contains(q) == true ||
+                            (m.label?.lowercase()?.contains(q) == true) ||
+                            m.searchTerms.any { it.lowercase().contains(q) } ||
+                            (m.comment?.lowercase()?.contains(q) == true)
                     }
                 )
             }.filter { it.matches.isNotEmpty() }

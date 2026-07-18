@@ -1,9 +1,17 @@
 package li.mofanx.epso.expansion
 
+import android.content.ClipData
+import android.net.Uri
+import android.os.Bundle
+import android.text.Spanned
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.content.FileProvider
+import androidx.core.text.HtmlCompat
 import kotlinx.coroutines.delay
+import li.mofanx.epso.app
 import li.mofanx.epso.service.A11yService
 import li.mofanx.epso.util.LogUtils
+import java.io.File
 
 private const val TAG = "TextReplacer"
 private const val CURSOR_MARKER = "\$|\$"
@@ -34,35 +42,30 @@ class TextReplacer(private val a11yService: A11yService) {
     ): Boolean {
         return try {
             val match = matchResult.match
+            val (replacement, cursorOffset) = resolveReplacement(match, matchResult, varEvaluator)
 
-            // 1. 变量求值
-            var replacement = varEvaluator.evaluate(match.replace, match.vars)
-
-            // 2. 大小写传播
-            if (match.propagateCase) {
-                replacement = applyPropagateCase(
-                    trigger = matchResult.matchedText,
-                    replace = replacement,
-                    style = match.uppercaseStyle,
-                )
+            // 图片输出走剪贴板粘贴
+            if (!match.imagePath.isNullOrEmpty()) {
+                return performImageReplacement(node, originalText, matchResult, match.imagePath)
             }
 
-            // 3. 处理光标标记 $|$
-            val (processedText, cursorOffset) = processCursorMarker(replacement)
-
-            // 4. 构建新的完整文本（触发词区间替换为展开文本）
-            val newText = buildString {
-                append(originalText.substring(0, matchResult.startIndex))
-                append(processedText)
-                append(originalText.substring(matchResult.endIndex))
-            }
-
-            // 5. 记录替换前状态（供 undo 使用）
             lastReplacement = originalText to node
 
-            // 6. 执行替换
-            performTextReplacement(node, newText, matchResult.startIndex + cursorOffset)
-
+            if (shouldUseClipboard(match)) {
+                performClipboardReplacement(
+                    node = node,
+                    originalText = originalText,
+                    matchResult = matchResult,
+                    replacement = replacement,
+                    cursorOffset = cursorOffset,
+                )
+            } else {
+                performTextReplacement(
+                    node = node,
+                    newText = buildFullText(originalText, matchResult, replacement),
+                    cursorPosition = matchResult.startIndex + cursorOffset,
+                )
+            }
         } catch (e: FormCanceledException) {
             throw e
         } catch (e: Exception) {
@@ -95,18 +98,24 @@ class TextReplacer(private val a11yService: A11yService) {
             // 2. 处理光标标记 $|$
             val (processedText, cursorOffset) = processCursorMarker(finalReplacement)
 
-            // 3. 构建新的完整文本（触发词区间替换为展开文本）
-            val newText = buildString {
-                append(originalText.substring(0, matchResult.startIndex))
-                append(processedText)
-                append(originalText.substring(matchResult.endIndex))
-            }
-
-            // 4. 记录替换前状态（供 undo 使用）
+            // 3. 记录替换前状态（供 undo 使用）
             lastReplacement = originalText to node
 
-            // 5. 执行替换
-            performTextReplacement(node, newText, matchResult.startIndex + cursorOffset)
+            if (shouldUseClipboard(match)) {
+                performClipboardReplacement(
+                    node = node,
+                    originalText = originalText,
+                    matchResult = matchResult,
+                    replacement = processedText,
+                    cursorOffset = cursorOffset,
+                )
+            } else {
+                performTextReplacement(
+                    node = node,
+                    newText = buildFullText(originalText, matchResult, processedText),
+                    cursorPosition = matchResult.startIndex + cursorOffset,
+                )
+            }
         } catch (e: FormCanceledException) {
             throw e
         } catch (e: Exception) {
@@ -150,12 +159,76 @@ class TextReplacer(private val a11yService: A11yService) {
     }
 
     /**
+     * 根据 match 中实际设置了哪个输出字段，求值并返回最终文本与光标偏移。
+     */
+    private suspend fun resolveReplacement(
+        match: Match,
+        matchResult: MatchResult,
+        varEvaluator: VarEvaluator,
+    ): Pair<CharSequence, Int> {
+        val rawSource = when {
+            match.replace.isNotEmpty() -> match.replace
+            !match.markdown.isNullOrEmpty() -> match.markdown
+            !match.html.isNullOrEmpty() -> match.html
+            else -> ""
+        }
+
+        // 变量求值
+        var replacement = if (rawSource.isNotEmpty()) {
+            varEvaluator.evaluate(rawSource, match.vars)
+        } else {
+            ""
+        }
+
+        // 大小写传播
+        if (match.propagateCase) {
+            replacement = applyPropagateCase(
+                trigger = matchResult.matchedText,
+                replace = replacement,
+                style = match.uppercaseStyle,
+            )
+        }
+
+        // 光标标记
+        val (processedText, cursorOffset) = processCursorMarker(replacement)
+
+        // 根据输出类型转换
+        val result = when {
+            !match.html.isNullOrEmpty() -> HtmlCompat.fromHtml(processedText, HtmlCompat.FROM_HTML_MODE_COMPACT)
+            !match.markdown.isNullOrEmpty() -> MarkdownConverter.toCharSequence(processedText)
+            else -> processedText
+        }
+
+        return result to cursorOffset
+    }
+
+    /**
+     * 构建完整文本：触发词区间替换为展开内容。
+     */
+    private fun buildFullText(originalText: String, matchResult: MatchResult, replacement: CharSequence): CharSequence {
+        return buildString {
+            append(originalText.substring(0, matchResult.startIndex))
+            append(replacement)
+            append(originalText.substring(matchResult.endIndex))
+        }
+    }
+
+    /**
+     * 判断当前 match 是否需要走剪贴板+粘贴。
+     */
+    private fun shouldUseClipboard(match: Match): Boolean {
+        return match.forceClipboard
+            || match.forceMode.equals("clipboard", ignoreCase = true)
+            || match.forceMode.equals("keys", ignoreCase = true) // 手机上无法模拟键入，回退到剪贴板
+    }
+
+    /**
      * 执行实际的文本替换操作
      * 优先使用 ACTION_SET_TEXT（更通用），失败时直接设置 node.text
      */
     private suspend fun performTextReplacement(
         node: AccessibilityNodeInfo,
-        newText: String,
+        newText: CharSequence,
         cursorPosition: Int,
     ): Boolean {
         return try {
@@ -163,7 +236,7 @@ class TextReplacer(private val a11yService: A11yService) {
             node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             delay(50)
 
-            val args = android.os.Bundle().apply {
+            val args = Bundle().apply {
                 putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                     newText,
@@ -173,7 +246,7 @@ class TextReplacer(private val a11yService: A11yService) {
             delay(100)
 
             // 验证文本是否真正写入（部分 App 的自定义输入框 performAction 返回 true 但不生效）
-            if (success && node.refresh() && node.text?.toString() == newText) {
+            if (success && node.refresh() && node.text?.toString() == newText.toString()) {
                 setCursorPosition(node, cursorPosition.coerceIn(0, newText.length))
                 return true
             }
@@ -183,7 +256,7 @@ class TextReplacer(private val a11yService: A11yService) {
             delay(100)
             val refreshed = node.refresh()
             val actualText = node.text?.toString()
-            if (refreshed && actualText == newText) {
+            if (refreshed && actualText == newText.toString()) {
                 setCursorPosition(node, cursorPosition.coerceIn(0, newText.length))
                 true
             } else {
@@ -194,6 +267,142 @@ class TextReplacer(private val a11yService: A11yService) {
             LogUtils.e(TAG, "performTextReplacement failed", e)
             false
         }
+    }
+
+    /**
+     * 使用剪贴板+粘贴的方式插入内容：先删除触发词，定位光标，再粘贴。
+     * 若粘贴失败，回退到 ACTION_SET_TEXT。
+     */
+    private suspend fun performClipboardReplacement(
+        node: AccessibilityNodeInfo,
+        originalText: String,
+        matchResult: MatchResult,
+        replacement: CharSequence,
+        cursorOffset: Int,
+    ): Boolean {
+        val leftPart = originalText.substring(0, matchResult.startIndex)
+        val rightPart = originalText.substring(matchResult.endIndex)
+        val textWithoutTrigger = leftPart + rightPart
+        val pastePosition = matchResult.startIndex.coerceIn(0, textWithoutTrigger.length)
+
+        return try {
+            if (!setClipboard(replacement.toString())) {
+                return performTextReplacement(
+                    node = node,
+                    newText = buildFullText(originalText, matchResult, replacement),
+                    cursorPosition = matchResult.startIndex + cursorOffset,
+                )
+            }
+
+            // 先删除触发词
+            if (!performTextReplacement(node, textWithoutTrigger, pastePosition)) {
+                return false
+            }
+
+            // 定位光标到原来触发词位置
+            setCursorPosition(node, pastePosition)
+            delay(80)
+
+            // 执行粘贴
+            val pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+            delay(150)
+
+            if (!pasted || !node.refresh() || node.text?.toString() != leftPart + replacement + rightPart) {
+                // 粘贴未生效，回退到完整 set text
+                LogUtils.e(TAG, "ACTION_PASTE failed, fallback to ACTION_SET_TEXT")
+                return performTextReplacement(
+                    node = node,
+                    newText = buildFullText(originalText, matchResult, replacement),
+                    cursorPosition = matchResult.startIndex + cursorOffset,
+                )
+            }
+
+            // 光标定位
+            val finalPosition = (matchResult.startIndex + cursorOffset).coerceIn(0, leftPart.length + replacement.length + rightPart.length)
+            setCursorPosition(node, finalPosition)
+            true
+        } catch (e: Exception) {
+            LogUtils.e(TAG, "Clipboard replacement failed", e)
+            performTextReplacement(
+                node = node,
+                newText = buildFullText(originalText, matchResult, replacement),
+                cursorPosition = matchResult.startIndex + cursorOffset,
+            )
+        }
+    }
+
+    /**
+     * 图片输出：将图片文件复制到剪贴板，尝试 ACTION_PASTE；失败则插入文件名。
+     */
+    private suspend fun performImageReplacement(
+        node: AccessibilityNodeInfo,
+        originalText: String,
+        matchResult: MatchResult,
+        imagePath: String,
+    ): Boolean {
+        return try {
+            val file = File(imagePath.replace("%CONFIG%", try {
+                MatchStore.getWorkspaceDir().absolutePath
+            } catch (e: Throwable) {
+                ""
+            }))
+            if (!file.exists()) {
+                LogUtils.e(TAG, "Image not found: $imagePath")
+                return insertFallbackText(node, originalText, matchResult, "[图片: $imagePath]")
+            }
+
+            val uri = FileProvider.getUriForFile(
+                app,
+                "${app.packageName}.provider",
+                file,
+            )
+
+            val cm = a11yService.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager ?: return insertFallbackText(
+                        node, originalText, matchResult, "[图片: ${file.name}]"
+                    )
+
+            cm.setPrimaryClip(ClipData.newUri(app.contentResolver, "expansion image", uri))
+
+            val leftPart = originalText.substring(0, matchResult.startIndex)
+            val rightPart = originalText.substring(matchResult.endIndex)
+            val textWithoutTrigger = leftPart + rightPart
+            val pastePosition = matchResult.startIndex.coerceIn(0, textWithoutTrigger.length)
+
+            if (!performTextReplacement(node, textWithoutTrigger, pastePosition)) {
+                return insertFallbackText(node, originalText, matchResult, "[图片: ${file.name}]")
+            }
+
+            setCursorPosition(node, pastePosition)
+            delay(80)
+            val pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+            delay(150)
+
+            if (!pasted) {
+                insertFallbackText(node, originalText, matchResult, "[图片: ${file.name}]")
+            } else {
+                true
+            }
+        } catch (e: Exception) {
+            LogUtils.e(TAG, "Image replacement failed", e)
+            insertFallbackText(node, originalText, matchResult, "[图片: $imagePath]")
+        }
+    }
+
+    /**
+     * 在触发词位置插入纯文本替代内容（用于图片/剪贴板失败回退）。
+     */
+    private suspend fun insertFallbackText(
+        node: AccessibilityNodeInfo,
+        originalText: String,
+        matchResult: MatchResult,
+        fallback: String,
+    ): Boolean {
+        return performTextReplacement(
+            node = node,
+            newText = buildFullText(originalText, matchResult, fallback),
+            cursorPosition = matchResult.startIndex + fallback.length,
+        )
     }
 
     /**
