@@ -92,7 +92,7 @@ class YamlWorkspace(val dir: File) {
      * @param defaultPrefix 全局默认触发前缀，用于拆分老数据 trigger 中拼写的前缀
      */
     suspend fun readFile(file: File, defaultPrefix: String = ""): MatchGroup = withContext(Dispatchers.IO) {
-        resolveEffectivePrefix(parseYaml(file.readText(), file.absolutePath), defaultPrefix)
+        resolveEffectiveDefaults(parseYaml(file.readText(), file.absolutePath), defaultPrefix)
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -367,7 +367,7 @@ class YamlWorkspace(val dir: File) {
         if (!file.exists() || !file.isFile) return
 
         val group = withContext(Dispatchers.IO) {
-            resolveEffectivePrefix(parseYaml(file.readText(), file.absolutePath), defaultPrefix)
+            resolveEffectiveDefaults(parseYaml(file.readText(), file.absolutePath), defaultPrefix)
         }
 
         // 合并全局变量（同名后者覆盖）
@@ -398,9 +398,10 @@ class YamlWorkspace(val dir: File) {
     }
 
     /**
-     * 计算每条 Match 的 effectivePrefix，并把已拼入 trigger 的老前缀剥离到 prefix 字段外。
+     * 计算每条 Match 的 effectivePrefix / effectiveFilter / effectiveEnable，
+     * 并把已拼入 trigger 的老前缀剥离到 prefix 字段外。
      */
-    private fun resolveEffectivePrefix(
+    private fun resolveEffectiveDefaults(
         group: MatchGroup,
         defaultPrefix: String,
     ): MatchGroup {
@@ -413,8 +414,14 @@ class YamlWorkspace(val dir: File) {
             } else {
                 match.trigger to match.triggers
             }
-            match.copy(trigger = newTrigger, triggers = newTriggers)
-                .apply { this.effectivePrefix = effectivePrefix }
+            match.copy(trigger = newTrigger, triggers = newTriggers).apply {
+                this.effectivePrefix = effectivePrefix
+                this.effectiveFilterTitle = match.filterTitle ?: group.filterTitle
+                this.effectiveFilterExec = match.filterExec ?: group.filterExec
+                this.effectiveFilterClass = match.filterClass ?: group.filterClass
+                this.effectiveFilterOs = match.filterOs ?: group.filterOs
+                this.effectiveEnable = match.enable ?: group.enable ?: true
+            }
         }
         return group.copy(matches = resolved).apply { sourceFile = group.sourceFile }
     }

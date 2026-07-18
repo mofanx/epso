@@ -207,10 +207,20 @@ open class ExpansionService : A11yService() {
                 return
             }
 
+            val match = matchResult.match
+
+            // 应用 filter_* / enable 过滤：检查当前 App 上下文是否允许该规则生效
+            val root = rootInActiveWindow
+            val title = root?.contentDescription?.toString() ?: root?.text?.toString()
+            val className = root?.className?.toString()
+            if (!match.isActiveFor(packageName = packageName, className = className, title = title)) {
+                LogUtils.d(TAG, "Match '${matchResult.matchedText}' filtered out for package=$packageName, class=$className, title=$title")
+                _expansionState.value = ExpansionState.Idle
+                return
+            }
+
             LogUtils.d(TAG, "Match: '${matchResult.matchedText}' in $packageName")
             _expansionState.value = ExpansionState.Expanding
-
-            val match = matchResult.match
 
             // 表单/带 form 类型变量的规则需要先把触发词删掉、等悬浮窗关闭后再回填，
             // 否则悬浮窗弹出期间原输入框会失焦，节点失效导致替换失败。
