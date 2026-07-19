@@ -2,6 +2,6 @@
 <resources>
     <color name="better_white">#FCFCFC</color>
     <color name="better_black">#111111</color>
-    <color name="ic_launcher_background_tint">#6750A4</color>
-    <color name="ic_launcher_foreground_tint">#FFFFFF</color>
+    <color name="ic_launcher_background_tint">#FCFCFC</color>
+    <color name="ic_launcher_foreground_tint">#1C1B1F</color>
 </resources>

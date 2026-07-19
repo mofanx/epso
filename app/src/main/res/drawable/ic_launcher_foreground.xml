@@ -3,18 +3,14 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 三条文本线 -->
+    <!--
+        新图标：命令触发键
+        - 外框为圆角矩形键盘按键，代表“触发 / 快捷键”
+        - 中间镂空成“:>”符号，呼应 epso 的默认触发前缀，同时表达“输入后展开”
+        - 采用 evenOdd 填充规则，内嵌图形作为镂空孔洞
+    -->
     <path
         android:fillColor="@color/ic_launcher_foreground_tint"
-        android:pathData="M28,40 h32 v5 h-32 z" />
-    <path
-        android:fillColor="@color/ic_launcher_foreground_tint"
-        android:pathData="M28,52 h32 v5 h-32 z" />
-    <path
-        android:fillColor="@color/ic_launcher_foreground_tint"
-        android:pathData="M28,64 h22 v5 h-22 z" />
-    <!-- 扩展箭头 (向右的 chevron) -->
-    <path
-        android:fillColor="@color/ic_launcher_foreground_tint"
-        android:pathData="M68,38 L84,54 L68,70 L68,64 L78,54 L68,44 z" />
+        android:fillType="evenOdd"
+        android:pathData="M38,24 h32 a14,14 0 0 1 14,14 v32 a14,14 0 0 1 -14,14 h-32 a14,14 0 0 1 -14,-14 v-32 a14,14 0 0 1 14,-14 z M42,41 m -5.5,0 a 5.5,5.5 0 1,0 11,0 a 5.5,5.5 0 1,0 -11,0 M42,67 m -5.5,0 a 5.5,5.5 0 1,0 11,0 a 5.5,5.5 0 1,0 -11,0 M58,45 L74,54 L58,63 L58,57 L68,54 L58,51 z" />
 </vector>
