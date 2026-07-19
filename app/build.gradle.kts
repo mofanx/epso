@@ -61,8 +61,8 @@ android {
     namespace = "li.mofanx.epso"
     defaultConfig {
         applicationId = "li.mofanx.epso"
-        versionCode = 92
-        versionName = "1.12.1"
+        versionCode = 93
+        versionName = "1.12.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
