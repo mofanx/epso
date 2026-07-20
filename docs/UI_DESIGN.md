@@ -577,42 +577,49 @@ PerfTopAppBar(windowInsets = activity.topBarWindowInsets)
 ## 10. 代码组织结构
 
 ```
-app/src/main/kotlin/li/songe/epso/
+app/src/main/kotlin/li/mofanx/epso/
 ├── MainActivity.kt              # 入口，导航注册，全局 Dialog
 ├── MainViewModel.kt             # 导航栈管理，全局状态
+├── App.kt                       # 应用初始化
+├── a11y/                        # 无障碍服务状态管理
+├── data/                        # 通用数据模型（AppInfo、CrashData 等）
+├── expansion/                   # 文本扩展核心引擎
+│   ├── Match.kt / Var.kt / MatchGroup.kt          # 规则数据模型
+│   ├── MatchStore.kt / YamlWorkspace.kt           # 运行时仓库 / YAML 文件读写
+│   ├── TriggerMatcher.kt / VarEvaluator.kt        # 触发匹配 / 变量求值
+│   ├── TextReplacer.kt / ExpansionService.kt      # 文本替换 / 扩展服务
+│   ├── FormOverlayWindow.kt / ChoiceOverlayWindow.kt / SearchOverlayWindow.kt
+│   ├── sync/                    # WebDAV / 本地文件夹同步
+│   ├── hub/                     # 包商店客户端
+│   └── ...
+├── notif/                       # 通知与通知渠道
+├── permission/                  # 权限框架
+├── service/                     # 后台服务（无障碍、HTTP、截图、状态、Tile）
+├── shizuku/                     # Shizuku 隐藏 API 桥接
+├── store/                       # 数据存储（SettingsStore、storeFlow）
 ├── ui/
-│   ├── style/                   # 设计系统
-│   │   ├── Theme.kt             # 主题（配色 + 动画 + 注入）
-│   │   ├── Padding.kt           # 间距常量
-│   │   ├── Color.kt             # 卡片颜色 + 语法高亮
-│   │   └── TextTransformation.kt # 输入转换
+│   ├── style/                   # 设计系统（Theme、Padding、Color、TextTransformation）
 │   ├── component/               # 通用组件库（40+ 组件）
-│   │   ├── PerfIcon.kt          # 图标系统
-│   │   ├── PerfTopAppBar.kt     # 顶部栏
-│   │   ├── PerfSwitch.kt        # 开关
-│   │   ├── TextSwitch.kt        # 设置开关行
-│   │   ├── TextMenu.kt          # 下拉选择行
-│   │   ├── SettingItem.kt       # 导航行
-│   │   ├── ScaffoldDialog.kt    # 全屏对话框
-│   │   ├── FullscreenDialog.kt  # 全屏 Dialog 基础
-│   │   ├── DialogOptions.kt     # 弹窗管理
-│   │   ├── EmptyText.kt         # 空状态
-│   │   ├── AnimationFloatingActionButton.kt  # 动画 FAB
-│   │   ├── Hooks.kt             # 滚动 Hook
-│   │   ├── Animation.kt         # 动画工具
-│   │   └── ...
+│   ├── common/                  # 通用 UI 能力（adaptive、feedback、form、state）
 │   ├── home/                    # 首页 Tab 页面
 │   │   ├── HomePage.kt          # 底部导航容器
-│   │   ├── ControlPage.kt       # 首页 Tab
-│   │   ├── AppListPage.kt       # 应用 Tab
+│   │   ├── ControlPage.kt       # 控制首页
 │   │   ├── SettingsPage.kt      # 设置 Tab
+│   │   ├── HomeComponents.kt    # 首页共享组件
 │   │   └── ScaffoldExt.kt       # 页面配置封装
+│   ├── expansion/               # 扩展规则管理页面
+│   │   ├── MatchListPage.kt
+│   │   ├── MatchEditorPage.kt
+│   │   ├── FilesPage.kt
+│   │   ├── GlobalVarsPage.kt
+│   │   ├── SyncSettingsPage.kt
+│   │   ├── PackageStorePage.kt
+│   │   └── YamlEditorPage.kt
+│   ├── icon/                    # 自定义图标
 │   ├── share/                   # CompositionLocal
-│   │   └── LocalExt.kt          # LocalMainViewModel, LocalDarkTheme, LocalIsTalkbackEnabled
-│   ├── *Page.kt                 # 各子页面
-│   └── *Route.kt                # 路由定义（与 Page 同文件）
-└── store/
-    └── SettingsStore.kt         # 设置数据模型（驱动 UI 状态）
+│   ├── *Page.kt / *Vm.kt        # 其他子页面及对应 ViewModel
+│   └── *Route.kt                # 路由定义（通常与 Page 同文件）
+└── util/                        # 通用工具函数
 ```
 
 ---

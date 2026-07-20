@@ -1,5 +1,8 @@
 # espansogo → epso 功能迁移重构计划
 
+> **状态：已完成**（历史归档）
+> 本文档记录的功能迁移计划已基本实现，当前仅作历史参考。如需了解最新实现，请直接查看 `app/src/main/kotlin/li/mofanx/epso/expansion/` 目录。
+
 > 目标：将 espansogo（.NET MAUI + Blazor）的文本扩展功能，以原生 Kotlin + Jetpack Compose 重新实现，移植到 epso 框架中，最终形成一个完整可用的 Android 文本扩展应用。
 
 ---

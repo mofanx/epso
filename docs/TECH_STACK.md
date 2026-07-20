@@ -2,11 +2,11 @@
 
 ## 项目概况
 
-**epso** 是一个基于 Android 无障碍服务的通用 APP 开发框架，包含两个子模块：
+**epso** 是一个基于 Android 无障碍服务的文本扩展应用，兼容 espanso YAML 配置格式，支持文本触发替换、变量求值、表单弹窗、规则管理、YAML 文件同步与包商店。包含两个子模块：
 
 | 模块 | 类型 | 说明 |
 |---|---|---|
-| `:app` | Android Application | 主应用，UI + 服务层 |
+| `:app` | Android Application | 主应用，UI + 服务层 + 文本扩展引擎 |
 | `:hidden_api` | Android Library | 隐藏 API 桥接（Shizuku） |
 
 ---
@@ -35,6 +35,7 @@
 
 ### 数据层
 - **kotlinx.serialization** (1.11.0) — JSON 序列化
+- **kaml** (0.61.0) — YAML 序列化 / 反序列化，用于 espanso 配置
 - **kotlinx-atomicfu** (0.33.0) — 原子操作
 
 ### 网络层
@@ -74,7 +75,8 @@
 
 ## 架构特点
 
-1. **无障碍服务框架** — 通过 `AccessibilityService` 提供通用无障碍服务基础设施
-2. **内嵌 HTTP Server** — Ktor CIO 引擎，供外部连接调试
-3. **Shizuku 集成** — 免 Root 执行高权限操作（如 `WRITE_SECURE_SETTINGS`）
-4. **多渠道分发** — epso 渠道和 play 渠道
+1. **文本扩展引擎** — 支持 espanso 兼容的 YAML 规则、触发匹配、变量求值、表单弹窗、剪贴板输出
+2. **无障碍服务框架** — 通过 `AccessibilityService` 监听输入并执行文本替换
+3. **内嵌 HTTP Server** — Ktor CIO 引擎，提供 REST API 与调试端点
+4. **Shizuku 集成** — 免 Root 执行高权限操作（如 `WRITE_SECURE_SETTINGS`、shell 脚本）
+5. **多渠道分发** — epso 渠道和 play 渠道
