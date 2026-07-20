@@ -17,6 +17,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -69,7 +70,7 @@ class ChoiceOverlayWindow : OverlayWindowService(positionKey = "choice_overlay")
     override fun ComposeContent() {
         val options = pendingOptions
         if (options.isEmpty()) {
-            choiceScope.launch {
+            LaunchedEffect(Unit) {
                 _resultFlow.emit(null)
                 stopSelf()
             }

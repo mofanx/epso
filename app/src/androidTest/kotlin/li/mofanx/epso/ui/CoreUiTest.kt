@@ -2,6 +2,7 @@ package li.mofanx.epso.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -97,7 +98,7 @@ class CoreUiTest {
     fun matchListPage_searchFiltersMatches() {
         composeTestRule.setContent {
             AppTheme {
-                CompositionLocalProvider(LocalMainViewModel provides MainViewModel()) {
+                CompositionLocalProvider(LocalMainViewModel provides viewModel<MainViewModel>()) {
                     MatchListPage(route = MatchListRoute())
                 }
             }
@@ -120,7 +121,7 @@ class CoreUiTest {
     fun matchEditorPage_validationShowsErrorsAndEnablesSave() {
         composeTestRule.setContent {
             AppTheme {
-                CompositionLocalProvider(LocalMainViewModel provides MainViewModel()) {
+                CompositionLocalProvider(LocalMainViewModel provides viewModel<MainViewModel>()) {
                     MatchEditorPage(
                         route = MatchEditorRoute(sourceFilePath = baseFile.absolutePath),
                     )
@@ -144,7 +145,7 @@ class CoreUiTest {
     fun matchEditorPage_unsavedChangesDialogShownOnBack() {
         composeTestRule.setContent {
             AppTheme {
-                CompositionLocalProvider(LocalMainViewModel provides MainViewModel()) {
+                CompositionLocalProvider(LocalMainViewModel provides viewModel<MainViewModel>()) {
                     MatchEditorPage(
                         route = MatchEditorRoute(sourceFilePath = baseFile.absolutePath),
                     )

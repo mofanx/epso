@@ -74,6 +74,7 @@
     <string name="expansion_entry_files">文件</string>
     <string name="expansion_entry_global_vars">全局变量</string>
     <string name="expansion_entry_package_store">包商店</string>
+    <string name="package_store_title">包商店</string>
     <string name="expansion_empty_rules_title">暂无规则</string>
     <string name="expansion_empty_rules_subtitle">创建第一条规则或从包商店安装。</string>
     <string name="expansion_action_create_rule">创建规则</string>

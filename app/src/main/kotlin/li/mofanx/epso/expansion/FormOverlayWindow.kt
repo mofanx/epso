@@ -23,6 +23,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -107,12 +108,12 @@ class FormOverlayWindow : OverlayWindowService(positionKey = "form_overlay") {
     @Composable
     override fun ComposeContent() {
         val match = pendingMatch ?: run {
-            formScope.launch { _resultFlow.emit(null); stopSelf() }
+            LaunchedEffect(Unit) { _resultFlow.emit(null); stopSelf() }
             return
         }
 
         val formTemplate = match.form ?: run {
-            formScope.launch { _resultFlow.emit(null); stopSelf() }
+            LaunchedEffect(Unit) { _resultFlow.emit(null); stopSelf() }
             return
         }
 
