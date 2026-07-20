@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * 变量定义（espanso 兼容）
- * 支持类型：echo / date / clipboard / random / choice / shell / script / match
+ * 支持类型：echo / date / clipboard / random / choice / shell / script / http / match / form
  */
 @Serializable
 data class Var(

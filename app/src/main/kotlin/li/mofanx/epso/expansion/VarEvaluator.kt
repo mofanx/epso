@@ -32,10 +32,13 @@ class FormCanceledException : Exception("Form canceled or timed out")
  * - clipboard → 读取剪贴板文本
  * - random   → 从 params.choices 随机选一项
  * - choice   → 同 random（通过 choices/values 提供选项，Phase 4 接入悬浮窗后再升级）
+ * - shell    → 执行 shell 命令
+ * - script   → 执行外部脚本
+ * - http     → 发送 HTTP 请求并返回响应文本，支持 json_path 提取
  * - match    → 递归求值另一条规则的 replace（防循环，最大深度 5）
  * - form     → 启动表单悬浮窗收集字段值，返回 Map<String, String>
  *
- * 不支持的类型（shell/script/javascript）：忽略，占位符保留原样。
+ * 不支持的类型（javascript）：忽略，占位符保留原样。
  *
  * @param globalVars 全局变量（来自 MatchStore.globalVars）
  * @param formLauncher 表单启动器：传入 form 类型变量，返回用户填写结果，取消/超时返回 null
@@ -167,6 +170,21 @@ class VarEvaluator(
                     )
                 }
 
+                "http" -> {
+                    val resolvedUrl = resolveVarPlaceholders(v.params.url ?: "", values)
+                    val resolvedBody = v.params.body?.let { resolveVarPlaceholders(it, values) }
+                    HttpVarRunner.run(
+                        url = resolvedUrl,
+                        method = v.params.method,
+                        headers = v.params.headers,
+                        body = resolvedBody,
+                        jsonPath = v.params.jsonPath,
+                        trim = v.params.trim,
+                        ignoreError = v.params.ignoreError,
+                        debug = v.params.debug,
+                    )
+                }
+
                 "match" -> {
                     if (depth >= MAX_MATCH_DEPTH) {
                         LogUtils.e(TAG, "match var recursion depth exceeded for '${v.name}'")
@@ -194,12 +212,14 @@ class VarEvaluator(
     }
 
     /**
-     * 统一替换 replace 字符串中的占位符。
-     * 支持：
-     * - {{varName}}
-     * - {{formName.fieldName}}
+     * 统一替换字符串中的 {{varName}} / {{formName.fieldName}} 占位符。
+     * 同时用于 replace 文本和 http 变量的 url/body。
      */
     private fun replacePlaceholders(text: String, values: Map<String, Any?>): String {
+        return resolveVarPlaceholders(text, values)
+    }
+
+    private fun resolveVarPlaceholders(text: String, values: Map<String, Any?>): String {
         val regex = Regex("""\{\{([^{}]+)\}\}""")
         return regex.replace(text) { matchResult ->
             val path = matchResult.groupValues[1].trim()

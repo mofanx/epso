@@ -56,6 +56,7 @@ import li.mofanx.epso.ui.share.LocalMainViewModel
 import li.mofanx.epso.ui.style.itemHorizontalPadding
 import li.mofanx.epso.ui.style.itemVerticalPadding
 import li.mofanx.epso.ui.style.surfaceCardColors
+import li.mofanx.epso.util.openUri
 import li.mofanx.epso.util.throttle
 import java.io.File
 
@@ -339,6 +340,10 @@ fun PackageStorePage() {
                             isLoading = false
                         }
                     }) { Text("重新加载") }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        openUri("https://github.com/espanso/hub/releases")
+                    }) { Text("去浏览器手动下载") }
                 }
             }
             return@Scaffold

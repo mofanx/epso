@@ -142,8 +142,8 @@ fun resolveQuickStartProgress(): QuickStartProgress {
     val a11yRunning by ExpansionService.isRunning.collectAsState()
     val matchDict by MatchStore.matchDict.collectAsState()
     val matchCount = matchDict.values.distinct().size
-    // TODO: 验证步骤目前以「有规则且服务可用」为准，后续可接入真实的预览/历史成功事件
-    val verified = a11yRunning && matchCount > 0
+    val hasEverExpanded by ExpansionService.hasEverExpanded.collectAsState()
+    val verified = a11yRunning && matchCount > 0 && hasEverExpanded
     return QuickStartProgress(
         steps = listOf(
             QuickStartStep(

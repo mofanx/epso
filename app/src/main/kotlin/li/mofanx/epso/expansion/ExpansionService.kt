@@ -47,6 +47,9 @@ open class ExpansionService : A11yService() {
 
         val isRunning = MutableStateFlow(false)
 
+        /** 是否至少成功完成过一次文本扩展，用于首页快速开始「验证」步骤 */
+        val hasEverExpanded = MutableStateFlow(false)
+
         @Volatile
         private var instance: ExpansionService? = null
 
@@ -257,6 +260,7 @@ open class ExpansionService : A11yService() {
                     lastExpandedText = node.text?.toString() ?: text
                     lastExpandedTime = System.currentTimeMillis()
                 }
+                hasEverExpanded.value = true
                 ExpansionState.Completed(
                     trigger = matchResult.matchedText,
                     expandedText = expandedText.take(60),
@@ -552,6 +556,7 @@ open class ExpansionService : A11yService() {
 
         if (success) {
             LogUtils.d(TAG, "Search expand: inserted '${selectedMatch.replace.take(60)}'")
+            hasEverExpanded.value = true
             _expansionState.value = ExpansionState.Completed(
                 trigger = triggeredText,
                 expandedText = selectedMatch.replace.take(60),

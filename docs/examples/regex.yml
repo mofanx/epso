@@ -1,0 +1,16 @@
+name: Regex Examples
+
+matches:
+  - regex: "\\b\\d{4}-\\d{2}-\\d{2}\\b"
+    replace: "[日期]"
+    label: "日期识别"
+
+  - trigger: ":hex"
+    regex: "#([0-9a-fA-F]{6})"
+    replace: "颜色: {{hex}}"
+    label: "十六进制颜色"
+    vars:
+      - name: hex
+        type: echo
+        params:
+          echo: "未知颜色"

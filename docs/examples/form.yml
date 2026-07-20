@@ -1,0 +1,23 @@
+name: Form Examples
+
+matches:
+  - trigger: ":greet"
+    form: "Hello, [[name]]! You are [[age]] years old."
+    form_fields:
+      name:
+        default: "World"
+      age:
+        type: list
+        values:
+          - "18"
+          - "25"
+          - "30"
+    label: "问候表单"
+
+  - trigger: ":note"
+    form: "备注：[[content]]"
+    form_fields:
+      content:
+        type: multiline
+        default: ""
+    label: "多行备注"

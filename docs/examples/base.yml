@@ -1,0 +1,52 @@
+name: Base
+
+matches:
+  - trigger: ":eml"
+    replace: "your.email@example.com"
+    label: "个人邮箱"
+
+  - trigger: ":addr"
+    replace: "北京市海淀区中关村大街 1 号"
+    label: "地址"
+
+  - trigger: ":phone"
+    replace: "138-0000-0000"
+    label: "电话"
+
+  - trigger: ":date"
+    replace: "今天是 {{mydate}}"
+    label: "当前日期"
+    vars:
+      - name: mydate
+        type: date
+        params:
+          format: "%Y-%m-%d"
+
+  - trigger: ":sig"
+    replace: "Best regards,\n{{name}}"
+    label: "签名"
+    vars:
+      - name: name
+        type: echo
+        params:
+          echo: "Your Name"
+
+  - trigger: ":meet"
+    replace: "会议时间：{{date_var}}"
+    label: "会议时间"
+    vars:
+      - name: date_var
+        type: date
+        params:
+          format: "%Y-%m-%d %H:%M"
+          offset: 3600
+
+  - trigger: ":rand"
+    replace: "{{r}}"
+    label: "随机数"
+    vars:
+      - name: r
+        type: random
+        params:
+          min: 1
+          max: 100

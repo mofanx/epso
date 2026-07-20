@@ -1,0 +1,17 @@
+name: Global Variables
+
+global_vars:
+  - name: company
+    type: echo
+    params:
+      echo: "Example Inc."
+
+  - name: today
+    type: date
+    params:
+      format: "%Y-%m-%d"
+
+matches:
+  - trigger: ":letterhead"
+    replace: "{{company}}\n{{today}}"
+    label: "信头"
