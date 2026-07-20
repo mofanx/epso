@@ -262,4 +262,5 @@ dependencies {
     implementation(libs.kevinnzouWebview)
 
     implementation(libs.kaml)
+    implementation(libs.rhino)
 }

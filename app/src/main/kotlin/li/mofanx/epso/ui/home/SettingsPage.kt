@@ -36,6 +36,7 @@ import li.mofanx.epso.ui.component.useScrollBehaviorState
 import li.mofanx.epso.ui.share.LocalMainViewModel
 import li.mofanx.epso.ui.style.EmptyHeight
 import li.mofanx.epso.ui.style.itemHorizontalPadding
+import li.mofanx.epso.permission.BatteryOptimization
 import li.mofanx.epso.util.throttle
 
 @Composable
@@ -88,6 +89,37 @@ fun useSettingsPage(): ScaffoldExt {
                 },
                 dismissButton = {
                     TextButton(onClick = { showSearchTriggerDlg = false }) { Text("取消") }
+                },
+            )
+        }
+
+        // 包商店索引源编辑对话框
+        var showPackageIndexUrlDlg by remember { mutableStateOf(false) }
+        if (showPackageIndexUrlDlg) {
+            var value by remember { mutableStateOf(store.packageIndexUrl) }
+            AlertDialog(
+                title = { Text(text = "包商店索引源") },
+                text = {
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { value = it },
+                        placeholder = { Text(text = "留空使用默认源") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text("填入镜像 index 地址，例如 gitee/raw 链接") },
+                    )
+                },
+                onDismissRequest = { showPackageIndexUrlDlg = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showPackageIndexUrlDlg = false
+                        if (value != store.packageIndexUrl) {
+                            storeFlow.value = store.copy(packageIndexUrl = value.trim())
+                        }
+                    }) { Text("确认") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPackageIndexUrlDlg = false }) { Text("取消") }
                 },
             )
         }
@@ -148,6 +180,27 @@ fun useSettingsPage(): ScaffoldExt {
                 title = stringResource(R.string.settings_trigger_prefix),
                 subtitle = store.triggerPrefix.ifEmpty { "无" },
                 onClick = throttle { showTriggerPrefixDlg = true },
+            )
+
+            SettingItem(
+                title = "包商店索引源",
+                subtitle = store.packageIndexUrl.ifEmpty { "使用默认源" },
+                onClick = throttle { showPackageIndexUrlDlg = true },
+            )
+
+            TextSwitch(
+                title = "包商店走代理镜像",
+                subtitle = "国内网络访问 GitHub 失败时自动回退",
+                checked = store.packageUseProxy,
+                onCheckedChange = {
+                    storeFlow.value = store.copy(packageUseProxy = it)
+                }
+            )
+
+            SettingItem(
+                title = "电池优化白名单",
+                subtitle = if (BatteryOptimization.isIgnoring()) "已忽略电池优化" else "点击跳转到系统设置开启",
+                onClick = throttle { BatteryOptimization.requestIgnore() },
             )
 
             SettingItem(

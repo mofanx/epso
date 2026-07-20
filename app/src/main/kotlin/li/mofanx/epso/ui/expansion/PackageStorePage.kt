@@ -56,9 +56,14 @@ import li.mofanx.epso.ui.share.LocalMainViewModel
 import li.mofanx.epso.ui.style.itemHorizontalPadding
 import li.mofanx.epso.ui.style.itemVerticalPadding
 import li.mofanx.epso.ui.style.surfaceCardColors
+import li.mofanx.epso.store.storeFlow
 import li.mofanx.epso.util.openUri
 import li.mofanx.epso.util.throttle
+import li.mofanx.epso.util.toast
 import java.io.File
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
 
 @Serializable
 data object PackageStoreRoute : NavKey
@@ -103,6 +108,7 @@ private fun friendlyActionError(raw: String): String {
 fun PackageStorePage() {
     val mainVm = LocalMainViewModel.current
     val scope = rememberCoroutineScope()
+    val store by storeFlow.collectAsState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     val workspaceDir = remember { MatchStore.getWorkspaceDir() }
@@ -119,10 +125,29 @@ fun PackageStorePage() {
     var actionMsg by remember { mutableStateOf("") }   // 操作状态（安装/卸载反馈）
     var isActing by remember { mutableStateOf(false) }
 
+    // 本地 zip 导入器
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                when (val r = HubClient.installFromZip(uri, workspaceDir)) {
+                    is HubResult.Success -> withContext(Dispatchers.Main) {
+                        installed = HubClient.installedPackages(workspaceDir)
+                        toast("已导入包 ${r.data}")
+                    }
+                    is HubResult.Failure -> withContext(Dispatchers.Main) {
+                        toast("导入失败：${r.error}")
+                    }
+                }
+            }
+        }
+    }
+
     // 初始加载
     LaunchedEffect(Unit) {
         isLoading = true
-        when (val r = HubClient.fetchIndex(cacheFile)) {
+        when (val r = HubClient.fetchIndex(cacheFile, packageIndexUrl = store.packageIndexUrl, useProxy = store.packageUseProxy)) {
             is HubResult.Success -> {
                 // 同名包只保留最新版本
                 allPackages = r.data.packages
@@ -189,7 +214,7 @@ fun PackageStorePage() {
                                 if (r is HubResult.Success) MatchStore.removePackageImport(pkg.name)
                                 r
                             } else {
-                                val r = HubClient.install(pkg, workspaceDir)
+                                val r = HubClient.install(pkg, workspaceDir, useProxy = store.packageUseProxy)
                                 if (r is HubResult.Success) MatchStore.addPackageImport(pkg.name)
                                 r
                             }
@@ -249,13 +274,18 @@ fun PackageStorePage() {
                 },
                 actions = {
                     PerfIconButton(
+                        imageVector = PerfIcon.Folder,
+                        contentDescription = "从本地 zip 导入包",
+                        onClick = throttle { importLauncher.launch("application/zip") },
+                    )
+                    PerfIconButton(
                         imageVector = PerfIcon.Autorenew,
                         contentDescription = "刷新包列表",
                         onClick = throttle {
                             scope.launch {
                                 isLoading = true
                                 cacheFile.delete()  // 强制重新拉取
-                                when (val r = HubClient.fetchIndex(cacheFile)) {
+                                when (val r = HubClient.fetchIndex(cacheFile, packageIndexUrl = store.packageIndexUrl, useProxy = store.packageUseProxy)) {
                                     is HubResult.Success -> {
                                         allPackages = r.data.packages
                                             .groupBy { it.name }
@@ -329,7 +359,7 @@ fun PackageStorePage() {
                         scope.launch {
                             isLoading = true
                             loadError = ""
-                            when (val r = HubClient.fetchIndex(cacheFile)) {
+                            when (val r = HubClient.fetchIndex(cacheFile, packageIndexUrl = store.packageIndexUrl, useProxy = store.packageUseProxy)) {
                                 is HubResult.Success -> allPackages = r.data.packages
                                     .groupBy { it.name }
                                     .values
@@ -342,8 +372,11 @@ fun PackageStorePage() {
                     }) { Text("重新加载") }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(onClick = {
+                        importLauncher.launch("application/zip")
+                    }) { Text("从本地 zip 导入") }
+                    OutlinedButton(onClick = {
                         openUri("https://github.com/espanso/hub/releases")
-                    }) { Text("去浏览器手动下载") }
+                    }) { Text("去浏览器下载") }
                 }
             }
             return@Scaffold

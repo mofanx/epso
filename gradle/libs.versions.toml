@@ -15,6 +15,7 @@ remap = "0.1.2"
 shizuku = "13.1.5"
 loc = "0.7.1"
 kaml = "0.61.0"
+rhino = "1.7.14"
 
 [libraries]
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
@@ -76,6 +77,7 @@ toaster = "com.github.getActivity:Toaster:15.0"
 permissions = "com.github.getActivity:XXPermissions:28.2"
 device = "com.github.getActivity:DeviceCompat:2.6"
 json5 = "li.songe:json5:0.5.0"
+rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 activityResultLauncher = "com.github.DylanCaiCoding:ActivityResultLauncher:1.1.2"
 kevinnzouWebview = "io.github.kevinnzou:compose-webview:0.33.6"
 

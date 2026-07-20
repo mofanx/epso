@@ -44,6 +44,12 @@ data class SettingsStore(
     /** 自动同步：每次工作区有修改后触发推送 */
     val syncAutoOnSave: Boolean = false,
 
+    // 包商店配置
+    /** 自定义包商店索引 URL（空 = 使用默认源） */
+    val packageIndexUrl: String = "",
+    /** 下载包 zip 时是否优先走国内代理镜像 */
+    val packageUseProxy: Boolean = true,
+
     /** 是否已同意使用声明与无障碍协议 */
     val termsAccepted: Boolean = false,
 )

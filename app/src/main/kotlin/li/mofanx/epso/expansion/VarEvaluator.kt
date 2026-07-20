@@ -27,18 +27,17 @@ class FormCanceledException : Exception("Form canceled or timed out")
  * 负责将 replace 字符串中的 {{varName}} 占位符替换为实际值。
  *
  * 支持的变量类型（对齐 espansogo）：
- * - echo     → 直接返回 params.echo
- * - date     → 当前日期时间，支持 strftime 格式转换
- * - clipboard → 读取剪贴板文本
- * - random   → 从 params.choices 随机选一项
- * - choice   → 同 random（通过 choices/values 提供选项，Phase 4 接入悬浮窗后再升级）
- * - shell    → 执行 shell 命令
- * - script   → 执行外部脚本
- * - http     → 发送 HTTP 请求并返回响应文本，支持 json_path 提取
- * - match    → 递归求值另一条规则的 replace（防循环，最大深度 5）
- * - form     → 启动表单悬浮窗收集字段值，返回 Map<String, String>
- *
- * 不支持的类型（javascript）：忽略，占位符保留原样。
+ * - echo       → 直接返回 params.echo
+ * - date       → 当前日期时间，支持 strftime 格式转换
+ * - clipboard  → 读取剪贴板文本
+ * - random     → 从 params.choices 随机选一项
+ * - choice     → 同 random（通过 choices/values 提供选项）
+ * - shell      → 执行 shell 命令
+ * - script     → 执行外部脚本
+ * - javascript → 使用 Rhino 执行 JS 代码，返回最后一行表达式结果
+ * - http       → 发送 HTTP 请求并返回响应文本，支持 json_path 提取
+ * - match      → 递归求值另一条规则的 replace（防循环，最大深度 5）
+ * - form       → 启动表单悬浮窗收集字段值，返回 Map<String, String>
  *
  * @param globalVars 全局变量（来自 MatchStore.globalVars）
  * @param formLauncher 表单启动器：传入 form 类型变量，返回用户填写结果，取消/超时返回 null
@@ -162,6 +161,17 @@ class VarEvaluator(
                 "script" -> {
                     ScriptRunner.run(
                         args = v.params.args,
+                        values = if (v.injectVars) values else emptyMap(),
+                        injectVars = v.injectVars,
+                        trim = v.params.trim,
+                        debug = v.params.debug,
+                        ignoreError = v.params.ignoreError,
+                    )
+                }
+
+                "javascript" -> {
+                    JavaScriptVarRunner.run(
+                        code = v.params.code ?: "",
                         values = if (v.injectVars) values else emptyMap(),
                         injectVars = v.injectVars,
                         trim = v.params.trim,
